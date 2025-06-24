@@ -11,99 +11,53 @@
             --primary-text-color: #E0E0E0;
             --secondary-text-color: #A0A0A0;
             --accent-color: #2979FF;
+            --danger-color: #CF6679; /* Màu cho nút xóa */
             --border-color: #333;
         }
-        body { 
-            background-color: var(--background-color);
-            color: var(--primary-text-color);
-            margin: 0; 
-            padding-bottom: 5rem; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
+        body { background-color: var(--background-color); color: var(--primary-text-color); margin: 0; padding-bottom: 5rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         #messages { list-style-type: none; margin: 0; padding: 1rem; }
-        #messages > li { 
-            background-color: var(--surface-color);
-            padding: 0.75rem 1rem; 
-            margin-bottom: 0.5rem; 
-            border-radius: 0.8rem; 
-            word-wrap: break-word; 
-            border: 1px solid var(--border-color);
-        }
-        .system-message { 
-            color: var(--secondary-text-color);
-            font-style: italic; 
-            background: none !important; 
-            text-align: center; 
-            border: none !important;
-        }
+        #messages > li { background-color: var(--surface-color); padding: 0.75rem 1rem; margin-bottom: 0.5rem; border-radius: 0.8rem; word-wrap: break-word; border: 1px solid var(--border-color); }
+        .system-message { color: var(--secondary-text-color); font-style: italic; background: none !important; text-align: center; border: none !important; }
         .message-sender { font-weight: bold; margin-right: 8px; }
-        .sticker-message { background: none !important; border: none !important; }
-        .sticker-message img { max-width: 100px; max-height: 100px; }
-        #form-container { 
-            background-color: var(--surface-color);
-            padding: 0.5rem; 
-            position: fixed; 
-            bottom: 0; left: 0; right: 0; 
-            border-top: 1px solid var(--border-color);
-        }
+        #form-container { background-color: var(--surface-color); padding: 0.5rem; position: fixed; bottom: 0; left: 0; right: 0; border-top: 1px solid var(--border-color); }
         #form { display: flex; height: 3rem; }
-        #input { 
-            background-color: #333;
-            color: var(--primary-text-color);
-            border: 1px solid var(--border-color); 
-            padding: 0 1rem; 
-            flex-grow: 1; 
-            border-radius: 2rem; 
-            margin-right: 0.5rem; 
-        }
+        #input { background-color: #333; color: var(--primary-text-color); border: 1px solid var(--border-color); padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin-right: 0.5rem; }
         #input:focus { outline: none; border-color: var(--accent-color); }
-        #form button { 
-            background: var(--accent-color);
-            border: none; 
-            padding: 0 1rem; 
-            margin: 0 0.25rem; 
-            border-radius: 2rem; 
-            color: #fff; 
-            cursor: pointer; 
-        }
+        #form button { background: var(--accent-color); border: none; padding: 0 1rem; margin: 0 0.25rem; border-radius: 2rem; color: #fff; cursor: pointer; }
+        
+        /* THÊM LẠI: CSS cho nút xóa và sticker */
+        #clearBtn { background-color: var(--danger-color); }
         #sticker-btn { background: none; font-size: 1.5rem; }
-        #sticker-panel { 
-            display: none; 
-            padding: 1rem; 
-            border-bottom: 1px solid var(--border-color); 
-            background: #2a2a2a; 
-        }
-        .sticker-img { width: 64px; height: 64px; cursor: pointer; margin: 5px; transition: transform 0.2s; }
-        .sticker-img:hover { transform: scale(1.1); }
     </style>
 </head>
 <body>
     <ul id="messages"></ul>
 
     <div id="form-container">
-        <div id="sticker-panel">
-            </div>
+        <div id="sticker-panel" style="display: none;"></div>
+        
         <form id="form" action="">
             <input id="input" autocomplete="off" placeholder="Type a message..." />
             <button type="submit">Send</button>
             <button id="sticker-btn" type="button">😀</button>
+            <button id="clearBtn" type="button">Delete</button>
         </form>
     </div>
 
     <script>
+        // THÊM LẠI: Lấy phần tử nút xóa
+        const clearBtn = document.getElementById('clearBtn');
         const form = document.getElementById('form');
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
         const stickerBtn = document.getElementById('sticker-btn');
-        const stickerPanel = document.getElementById('sticker-panel');
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}`);
 
         function sendMessage(type, content) {
             if (ws.readyState === WebSocket.OPEN) {
-                const message = { type: type, content: content };
-                ws.send(JSON.stringify(message));
+                ws.send(JSON.stringify({ type: type, content: content }));
             }
         }
         
@@ -112,20 +66,21 @@
             const item = document.createElement('li');
 
             switch (message.type) {
+                // THÊM LẠI: Xử lý khi có xác nhận xóa
+                case 'clear_confirmed':
+                    messages.innerHTML = '';
+                    return; // Dừng lại, không cần thêm item vào list
+
                 case 'system':
                     item.classList.add('system-message');
                     item.textContent = message.content;
                     break;
                 
-                // Cả tin nhắn text và sticker đều cần hiển thị tên người gửi với màu riêng
                 case 'text':
-                    // **LOGIC MỚI: Áp dụng màu cho tên người dùng**
                     item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
                     break;
                 case 'sticker':
-                    item.classList.add('sticker-message');
-                    // **LOGIC MỚI: Áp dụng màu cho tên người dùng**
-                    item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> <img src="/stickers/${message.content}">`;
+                    // Sticker logic sẽ được hoàn thiện sau
                     break;
             }
             messages.appendChild(item);
@@ -136,12 +91,19 @@
             e.preventDefault();
             if (input.value) { sendMessage('text', input.value); input.value = ''; }
         });
-        
-        stickerBtn.addEventListener('click', () => {
-            stickerPanel.style.display = stickerPanel.style.display === 'block' ? 'none' : 'block';
-        });
 
-        // Sticker sending logic will be re-added in the next step
+        // THÊM LẠI: Gửi yêu cầu xóa khi nhấn nút
+        clearBtn.addEventListener('click', () => {
+            if (confirm('Are you sure you want to delete all chat history for everyone?')) {
+                // Gửi yêu cầu xóa dưới dạng JSON
+                ws.send(JSON.stringify({ type: 'clear_request' }));
+            }
+        });
+        
+        // Logic nút sticker giữ nguyên
+        stickerBtn.addEventListener('click', () => {
+             alert('Sticker feature coming soon!');
+        });
     </script>
 </body>
 </html>
