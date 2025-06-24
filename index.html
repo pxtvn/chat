@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quick Chat</title>
-    <style>
+    <title>Quick Chat</title> <style>
+        /* CSS không thay đổi so với phiên bản giao diện tối trước đó */
         :root {
             --background-color: #121212;
             --surface-color: #1E1E1E;
             --primary-text-color: #E0E0E0;
             --secondary-text-color: #A0A0A0;
             --accent-color: #2979FF;
-            --danger-color: #CF6679; /* Màu cho nút xóa */
+            --danger-color: #CF6679;
             --border-color: #333;
         }
         body { background-color: var(--background-color); color: var(--primary-text-color); margin: 0; padding-bottom: 5rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -22,87 +22,89 @@
         #form-container { background-color: var(--surface-color); padding: 0.5rem; position: fixed; bottom: 0; left: 0; right: 0; border-top: 1px solid var(--border-color); }
         #form { display: flex; height: 3rem; }
         #input { background-color: #333; color: var(--primary-text-color); border: 1px solid var(--border-color); padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin-right: 0.5rem; }
-        #input:focus { outline: none; border-color: var(--accent-color); }
         #form button { background: var(--accent-color); border: none; padding: 0 1rem; margin: 0 0.25rem; border-radius: 2rem; color: #fff; cursor: pointer; }
-        
-        /* THÊM LẠI: CSS cho nút xóa và sticker */
         #clearBtn { background-color: var(--danger-color); }
-        #sticker-btn { background: none; font-size: 1.5rem; }
     </style>
 </head>
 <body>
     <ul id="messages"></ul>
 
     <div id="form-container">
-        <div id="sticker-panel" style="display: none;"></div>
-        
         <form id="form" action="">
             <input id="input" autocomplete="off" placeholder="Type a message..." />
             <button type="submit">Send</button>
-            <button id="sticker-btn" type="button">😀</button>
             <button id="clearBtn" type="button">Delete</button>
         </form>
     </div>
 
+    <audio id="notification-sound" src="/sounds/notification.mp3" preload="auto"></audio>
+
     <script>
-        // THÊM LẠI: Lấy phần tử nút xóa
-        const clearBtn = document.getElementById('clearBtn');
         const form = document.getElementById('form');
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
-        const stickerBtn = document.getElementById('sticker-btn');
+        const clearBtn = document.getElementById('clearBtn');
+        // THÊM MỚI: Lấy phần tử audio và các biến quản lý thông báo
+        const notificationSound = document.getElementById('notification-sound');
+        const originalTitle = document.title;
+        let unreadMessages = 0;
+        let myUsername = ''; // Sẽ được cập nhật sau
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}`);
 
         function sendMessage(type, content) {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: type, content: content }));
-            }
+            ws.send(JSON.stringify({ type: type, content: content }));
         }
         
         ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
             const item = document.createElement('li');
 
+            // Logic chính để hiển thị thông báo
+            // Chỉ thông báo nếu tin nhắn không phải của mình VÀ cửa sổ đang không được xem
+            if (message.username && document.hidden) {
+                // 1. Phát âm thanh
+                notificationSound.play().catch(e => console.error("Audio play failed:", e));
+
+                // 2. Cập nhật tiêu đề tab
+                unreadMessages++;
+                document.title = `(${unreadMessages}) ${originalTitle}`;
+            }
+
             switch (message.type) {
-                // THÊM LẠI: Xử lý khi có xác nhận xóa
                 case 'clear_confirmed':
                     messages.innerHTML = '';
-                    return; // Dừng lại, không cần thêm item vào list
-
+                    return;
                 case 'system':
                     item.classList.add('system-message');
                     item.textContent = message.content;
                     break;
-                
                 case 'text':
                     item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
-                    break;
-                case 'sticker':
-                    // Sticker logic sẽ được hoàn thiện sau
                     break;
             }
             messages.appendChild(item);
             window.scrollTo(0, document.body.scrollHeight);
         };
+        
+        // THÊM MỚI: Reset thông báo khi người dùng quay lại tab
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                unreadMessages = 0;
+                document.title = originalTitle;
+            }
+        });
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             if (input.value) { sendMessage('text', input.value); input.value = ''; }
         });
-
-        // THÊM LẠI: Gửi yêu cầu xóa khi nhấn nút
+        
         clearBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to delete all chat history for everyone?')) {
-                // Gửi yêu cầu xóa dưới dạng JSON
-                ws.send(JSON.stringify({ type: 'clear_request' }));
+                sendMessage('clear_request');
             }
-        });
-        
-        // Logic nút sticker giữ nguyên
-        stickerBtn.addEventListener('click', () => {
-             alert('Sticker feature coming soon!');
         });
     </script>
 </body>

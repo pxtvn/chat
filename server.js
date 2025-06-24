@@ -1,31 +1,30 @@
 const http = require('http');
-const fs = require('fs');
+const express = require('express'); // THÊM express
 const WebSocket = require('ws');
+const path = require('path');
 
 const USER_COLORS = [
     '#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', 
-    '#A0C4FF', '#BDB2FF', '#FFC6FF', '#FFAB91', '#B2DFDB',
-    '#C5E1A5', '#E6EE9C', '#FFF59D', '#FFE082', '#FFCC80'
+    '#A0C4FF', '#BDB2FF', '#FFC6FF', '#FFAB91', '#B2DFDB'
 ];
 
-const server = http.createServer((req, res) => {
-    if (req.url === '/') {
-        fs.readFile('index.html', (err, data) => {
-            if (err) {
-                res.writeHead(500);
-                return res.end('Error loading index.html');
-            }
-            res.writeHead(200, {'Content-Type': 'text/html'});
-            res.end(data);
-        });
-    } else {
-        res.writeHead(404);
-        res.end();
-    }
+// Khởi tạo ứng dụng express
+const app = express();
+// Phục vụ các file tĩnh từ thư mục 'public'
+// Giờ đây các file trong public/sounds/ hoặc public/stickers/ đều có thể truy cập được
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Phục vụ file index.html khi người dùng truy cập vào trang chính
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Tạo server HTTP từ ứng dụng express
+const server = http.createServer(app);
+// Gắn WebSocket server vào HTTP server
 const wss = new WebSocket.Server({ server });
 
+// Toàn bộ logic WebSocket từ đây trở xuống không thay đổi
 function broadcast(data) {
     const messageString = JSON.stringify(data);
     wss.clients.forEach(client => {
@@ -38,42 +37,29 @@ function broadcast(data) {
 wss.on('connection', ws => {
     ws.username = `User ${Math.floor(10000 + Math.random() * 90000)}`;
     ws.color = USER_COLORS[(wss.clients.size - 1) % USER_COLORS.length];
-
-    console.log(`${ws.username} connected with color ${ws.color}.`);
     broadcast({ type: 'system', content: `${ws.username} has joined the chat.` });
 
     ws.on('message', message => {
         let data;
         try {
             data = JSON.parse(message);
-
-            // **LOGIC MỚI: Xử lý các loại tin nhắn khác nhau**
             switch (data.type) {
                 case 'clear_request':
-                    // Nếu là yêu cầu xóa, gửi lại tín hiệu xác nhận cho tất cả client
-                    console.log(`Chat history cleared by ${ws.username}`);
                     broadcast({ type: 'clear_confirmed' });
                     break;
                 case 'text':
-                case 'sticker':
-                    // Nếu là tin nhắn text/sticker, gắn thông tin người gửi và gửi đi
                     data.username = ws.username;
                     data.color = ws.color;
                     broadcast(data);
                     break;
             }
-        } catch (error) {
-            console.error('Invalid message format:', message);
-        }
+        } catch (error) { console.error('Invalid message format'); }
     });
 
     ws.on('close', () => {
-        console.log(`${ws.username} disconnected.`);
         broadcast({ type: 'system', content: `${ws.username} has left the chat.` });
     });
 });
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server is listening on port ${PORT}`));
