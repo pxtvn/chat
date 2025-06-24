@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Chat</title>
+    <style>
+        body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f9; }
+        #chat-container { max-width: 800px; margin: 0 auto; }
+        #form { background: rgba(255, 255, 255, 0.8); padding: 0.5rem; position: fixed; bottom: 0; left: 0; right: 0; display: flex; height: 3rem; box-sizing: border-box; backdrop-filter: blur(10px); border-top: 1px solid #ddd; }
+        #input { border: 1px solid #ddd; padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin-right: 0.5rem; }
+        #input:focus { outline: none; border-color: #007bff; }
+        #form > button { background: #007bff; border: none; padding: 0 1.5rem; margin: 0; border-radius: 2rem; outline: none; color: #fff; cursor: pointer; }
+        #messages { list-style-type: none; margin: 0; padding: 1rem; }
+        #messages > li { padding: 0.5rem 1rem; margin-bottom: 0.5rem; border-radius: 1rem; }
+        #messages > li:nth-child(odd) { background: #e9e9eb; }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <ul id="messages"></ul>
+    </div>
+    <form id="form" action="">
+        <input id="input" autocomplete="off" placeholder="Type a message..." /><button>Send</button>
+    </form>
+    <script>
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const messages = document.getElementById('messages');
+        
+        // Tự động chọn wss (an toàn) nếu trang đang chạy trên https
+        // Automatically select wss (secure) if the page is on https
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+        ws.onmessage = (event) => {
+            const item = document.createElement('li');
+            item.textContent = event.data;
+            messages.appendChild(item);
+            window.scrollTo(0, document.body.scrollHeight);
+        };
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (input.value && ws.readyState === WebSocket.OPEN) {
+                ws.send(input.value);
+                input.value = '';
+            }
+        });
+    </script>
+</body>
+</html>
