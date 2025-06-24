@@ -5,77 +5,143 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quick Chat</title>
     <style>
-        body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f9; }
-        #chat-container { max-width: 800px; margin: 0 auto; }
-        #form { background: rgba(255, 255, 255, 0.8); padding: 0.5rem; position: fixed; bottom: 0; left: 0; right: 0; display: flex; height: 3rem; box-sizing: border-box; backdrop-filter: blur(10px); border-top: 1px solid #ddd; }
-        #input { border: 1px solid #ddd; padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin-right: 0.5rem; }
-        #input:focus { outline: none; border-color: #007bff; }
-        #form > button { background: #007bff; border: none; padding: 0 1.5rem; margin: 0 0.25rem; border-radius: 2rem; outline: none; color: #fff; cursor: pointer; }
-        /* TÍNH NĂNG MỚI: Kiểu cho nút xóa */
-        #clearBtn { background-color: #dc3545; }
+        :root {
+            --background-color: #121212;
+            --surface-color: #1E1E1E;
+            --primary-text-color: #E0E0E0;
+            --secondary-text-color: #A0A0A0;
+            --accent-color: #2979FF;
+            --border-color: #333;
+        }
+        body { 
+            background-color: var(--background-color);
+            color: var(--primary-text-color);
+            margin: 0; 
+            padding-bottom: 5rem; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
         #messages { list-style-type: none; margin: 0; padding: 1rem; }
-        #messages > li { padding: 0.5rem 1rem; margin-bottom: 0.5rem; border-radius: 0.8rem; word-wrap: break-word; }
-        #messages > li:nth-child(odd) { background: #e9e9eb; }
-        /* TÍNH NĂNG MỚI: Kiểu cho tin nhắn hệ thống */
-        .system-message { color: #888; font-style: italic; background: none !important; text-align: center; }
+        #messages > li { 
+            background-color: var(--surface-color);
+            padding: 0.75rem 1rem; 
+            margin-bottom: 0.5rem; 
+            border-radius: 0.8rem; 
+            word-wrap: break-word; 
+            border: 1px solid var(--border-color);
+        }
+        .system-message { 
+            color: var(--secondary-text-color);
+            font-style: italic; 
+            background: none !important; 
+            text-align: center; 
+            border: none !important;
+        }
+        .message-sender { font-weight: bold; margin-right: 8px; }
+        .sticker-message { background: none !important; border: none !important; }
+        .sticker-message img { max-width: 100px; max-height: 100px; }
+        #form-container { 
+            background-color: var(--surface-color);
+            padding: 0.5rem; 
+            position: fixed; 
+            bottom: 0; left: 0; right: 0; 
+            border-top: 1px solid var(--border-color);
+        }
+        #form { display: flex; height: 3rem; }
+        #input { 
+            background-color: #333;
+            color: var(--primary-text-color);
+            border: 1px solid var(--border-color); 
+            padding: 0 1rem; 
+            flex-grow: 1; 
+            border-radius: 2rem; 
+            margin-right: 0.5rem; 
+        }
+        #input:focus { outline: none; border-color: var(--accent-color); }
+        #form button { 
+            background: var(--accent-color);
+            border: none; 
+            padding: 0 1rem; 
+            margin: 0 0.25rem; 
+            border-radius: 2rem; 
+            color: #fff; 
+            cursor: pointer; 
+        }
+        #sticker-btn { background: none; font-size: 1.5rem; }
+        #sticker-panel { 
+            display: none; 
+            padding: 1rem; 
+            border-bottom: 1px solid var(--border-color); 
+            background: #2a2a2a; 
+        }
+        .sticker-img { width: 64px; height: 64px; cursor: pointer; margin: 5px; transition: transform 0.2s; }
+        .sticker-img:hover { transform: scale(1.1); }
     </style>
 </head>
 <body>
-    <div id="chat-container">
-        <ul id="messages"></ul>
+    <ul id="messages"></ul>
+
+    <div id="form-container">
+        <div id="sticker-panel">
+            </div>
+        <form id="form" action="">
+            <input id="input" autocomplete="off" placeholder="Type a message..." />
+            <button type="submit">Send</button>
+            <button id="sticker-btn" type="button">😀</button>
+        </form>
     </div>
-    <form id="form" action="">
-        <input id="input" autocomplete="off" placeholder="Type a message..." /><button type="submit">Send</button>
-        <button id="clearBtn" type="button">Delete History</button>
-    </form>
 
     <script>
         const form = document.getElementById('form');
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
-        // TÍNH NĂNG MỚI: Lấy nút xóa
-        const clearBtn = document.getElementById('clearBtn');
-        
+        const stickerBtn = document.getElementById('sticker-btn');
+        const stickerPanel = document.getElementById('sticker-panel');
+
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}`);
 
+        function sendMessage(type, content) {
+            if (ws.readyState === WebSocket.OPEN) {
+                const message = { type: type, content: content };
+                ws.send(JSON.stringify(message));
+            }
+        }
+        
         ws.onmessage = (event) => {
-            const messageData = event.data;
-
-            // TÍNH NĂNG MỚI: Xử lý khi nhận được tín hiệu xóa
-            if (messageData === '__CLEAR_CHAT_CONFIRMED__') {
-                messages.innerHTML = ''; // Xóa sạch danh sách tin nhắn
-                return;
-            }
-
+            const message = JSON.parse(event.data);
             const item = document.createElement('li');
-            
-            // TÍNH NĂNG MỚI: Xử lý tin nhắn hệ thống (join/leave)
-            if (messageData.startsWith('system:')) {
-                item.textContent = messageData.substring(7); // Bỏ phần "system:"
-                item.classList.add('system-message');
-            } else {
-                item.textContent = messageData;
-            }
 
+            switch (message.type) {
+                case 'system':
+                    item.classList.add('system-message');
+                    item.textContent = message.content;
+                    break;
+                
+                // Cả tin nhắn text và sticker đều cần hiển thị tên người gửi với màu riêng
+                case 'text':
+                    // **LOGIC MỚI: Áp dụng màu cho tên người dùng**
+                    item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
+                    break;
+                case 'sticker':
+                    item.classList.add('sticker-message');
+                    // **LOGIC MỚI: Áp dụng màu cho tên người dùng**
+                    item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> <img src="/stickers/${message.content}">`;
+                    break;
+            }
             messages.appendChild(item);
             window.scrollTo(0, document.body.scrollHeight);
         };
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value && ws.readyState === WebSocket.OPEN) {
-                ws.send(input.value);
-                input.value = '';
-            }
+            if (input.value) { sendMessage('text', input.value); input.value = ''; }
+        });
+        
+        stickerBtn.addEventListener('click', () => {
+            stickerPanel.style.display = stickerPanel.style.display === 'block' ? 'none' : 'block';
         });
 
-        // TÍNH NĂNG MỚI: Gửi yêu cầu xóa khi nhấn nút
-        clearBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to delete all chat history for everyone?')) {
-                ws.send('__CLEAR_CHAT__');
-            }
-        });
+        // Sticker sending logic will be re-added in the next step
     </script>
 </body>
 </html>
