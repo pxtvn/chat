@@ -7,21 +7,22 @@
     <link rel="manifest" href="/manifest.json">
     <title>Quick Chat</title>
     <style>
-        /* CSS được cập nhật và sắp xếp lại */
         :root {
             --background-color: #121212;
             --surface-color: #1E1E1E;
             --primary-text-color: #E0E0E0;
             --secondary-text-color: #A0A0A0;
             --accent-color: #2979FF;
+            --danger-color: #CF6679;
             --border-color: #333;
+            --online-color: #28a745;
         }
         * { box-sizing: border-box; }
         html, body { height: 100%; overflow: hidden; }
-        body { background-color: var(--background-color); color: var(--primary-text-color); margin: 0; font-family: sans-serif; }
+        body { background-color: var(--background-color); color: var(--primary-text-color); margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         
-        #app-container, #chat-wrapper { display: flex; height: 100%; }
-        #chat-wrapper { flex-grow: 1; flex-direction: column; }
+        #app-container { display: flex; height: 100vh; }
+        #chat-wrapper { flex-grow: 1; display: flex; flex-direction: column; height: 100%; }
         main { flex-grow: 1; overflow-y: auto; padding: 1rem; }
         #messages { list-style-type: none; margin: 0; padding: 0; }
         #messages > li { background-color: var(--surface-color); padding: 0.75rem 1rem; margin-bottom: 0.5rem; border-radius: 0.8rem; word-wrap: break-word; border: 1px solid var(--border-color); }
@@ -36,15 +37,15 @@
         #room-sidebar { width: 280px; flex-shrink: 0; background-color: var(--surface-color); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; }
         #room-list-header { padding: 1rem; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid var(--border-color); }
         #room-list { list-style: none; padding: 1rem; margin: 0; overflow-y: auto; }
-        #room-list li { padding: 0.75rem; margin-bottom: 0.5rem; background: #333; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; }
+        #room-list li { padding: 0.75rem; margin-bottom: 0.5rem; background: #333; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
         #room-list li:hover { background: #444; }
         .lock-icon { margin-left: 8px; }
-        .user-count { color: var(--secondary-text-color); }
+        .user-count { color: var(--secondary-text-color); font-size: 0.9rem; margin-left: 8px; }
         #create-room-btn { display: block; width: calc(100% - 2rem); margin: 1rem; padding: 0.75rem; font-size: 1rem; background: var(--accent-color); color: white; border: none; border-radius: 8px; cursor: pointer; }
 
         #welcome-overlay, #create-room-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
         #create-room-overlay { display: none; }
-        .modal { background-color: var(--surface-color); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-color); }
+        .modal { background-color: var(--surface-color); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-color); position: relative; }
         .modal h2 { margin-top: 0; }
         .modal input { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: #333; color: var(--primary-text-color); margin-bottom: 1rem; }
         .modal button { width: 50%; padding: 0.75rem; border-radius: 8px; border: none; background-color: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; }
@@ -56,7 +57,7 @@
         <div class="modal">
             <h2>Chào mừng tới Quick Chat</h2>
             <form id="name-form">
-                <input id="name-input" placeholder="Nhập tên của bạn..." required />
+                <input id="name-input" placeholder="Nhập tên của bạn..." required maxlength="20" />
                 <button type="submit">Tham gia</button>
             </form>
         </div>
@@ -67,7 +68,7 @@
             <button class="close-btn" id="close-create-room-btn">&times;</button>
             <h2>Tạo phòng mới</h2>
             <form id="create-room-form">
-                <input id="room-name-input" placeholder="Tên phòng..." required />
+                <input id="room-name-input" placeholder="Tên phòng..." required maxlength="30" />
                 <input id="room-password-input" type="password" placeholder="Mật khẩu (bỏ trống nếu không cần)" />
                 <button type="submit">Tạo phòng</button>
             </form>
@@ -120,17 +121,12 @@
             }
         });
 
-        createRoomBtn.addEventListener('click', () => {
-            createRoomOverlay.style.display = 'flex';
-        });
-
-        closeCreateRoomBtn.addEventListener('click', () => {
-            createRoomOverlay.style.display = 'none';
-        });
+        createRoomBtn.addEventListener('click', () => { createRoomOverlay.style.display = 'flex'; });
+        closeCreateRoomBtn.addEventListener('click', () => { createRoomOverlay.style.display = 'none'; });
 
         createRoomForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const roomName = document.getElementById('room-name-input').value;
+            const roomName = document.getElementById('room-name-input').value.trim();
             const password = document.getElementById('room-password-input').value;
             if (roomName) {
                 sendMessage('create_room', { roomName, password });
@@ -141,21 +137,21 @@
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value) {
-                sendMessage('text', { content: input.value });
+            if (input.value.trim()) {
+                sendMessage('text', { content: input.value.trim() });
                 input.value = '';
             }
         });
 
         roomList.addEventListener('click', (e) => {
             const roomItem = e.target.closest('li');
-            if (roomItem) {
+            if (roomItem && roomItem.dataset.roomName) {
                 const roomName = roomItem.dataset.roomName;
                 const isProtected = roomItem.dataset.isProtected === 'true';
                 let password = '';
                 if (isProtected) {
                     password = prompt(`Phòng "${roomName}" được bảo vệ. Vui lòng nhập mật khẩu:`);
-                    if (password === null) return; // Người dùng nhấn cancel
+                    if (password === null) return;
                 }
                 sendMessage('join_room', { roomName, password });
             }
@@ -166,7 +162,12 @@
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}`);
 
-            ws.onopen = () => sendMessage('set_username', username);
+            ws.onopen = () => {
+                console.log('WebSocket connected. Sending username...');
+                // **ĐÂY LÀ DÒNG ĐÃ ĐƯỢC SỬA LẠI**
+                // Gửi tên người dùng đi với đúng cấu trúc { content: ... }
+                sendMessage('set_username', { content: username });
+            };
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
@@ -189,16 +190,21 @@
             };
         }
 
-        function sendMessage(type, payload) {
+        function sendMessage(type, payload = {}) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type, ...payload }));
+                const message = { type, ...payload };
+                ws.send(JSON.stringify(message));
             }
         }
         
         function updateRoomList(rooms) {
             roomList.innerHTML = '';
-            if (rooms.length === 0) {
-                roomList.innerHTML = '<li>Chưa có phòng nào.</li>';
+            if (!rooms || rooms.length === 0) {
+                const item = document.createElement('li');
+                item.style.cursor = 'default';
+                item.style.justifyContent = 'center';
+                item.textContent = 'Chưa có phòng nào.';
+                roomList.appendChild(item);
                 return;
             }
             rooms.forEach(room => {
@@ -226,6 +232,24 @@
             }
             messages.appendChild(item);
             messages.parentElement.scrollTop = messages.parentElement.scrollHeight;
+        }
+        
+        // Notification logic (không thay đổi)
+        let unreadMessages = 0;
+        const originalTitle = document.title;
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                unreadMessages = 0;
+                document.title = originalTitle;
+                if ('clearAppBadge' in navigator) navigator.clearAppBadge();
+            }
+        });
+        
+        // Service Worker (không thay đổi)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js');
+            });
         }
     </script>
 </body>
