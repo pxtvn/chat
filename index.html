@@ -7,7 +7,6 @@
     <link rel="manifest" href="/manifest.json">
     <title>Quick Chat</title>
     <style>
-        /* Toàn bộ CSS không thay đổi */
         :root {
             --background-color: #121212;
             --surface-color: #1E1E1E;
@@ -16,23 +15,90 @@
             --accent-color: #2979FF;
             --danger-color: #CF6679;
             --border-color: #333;
+            --online-color: #28a745;
         }
-        body { background-color: var(--background-color); color: var(--primary-text-color); margin: 0; padding-bottom: 5rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        #chat-app { display: none; }
-        #messages { list-style-type: none; margin: 0; padding: 1rem; }
+        * { box-sizing: border-box; }
+        html, body {
+            height: 100%;
+            overflow: hidden; /* Ngăn body bị cuộn */
+        }
+        body { 
+            background-color: var(--background-color); 
+            color: var(--primary-text-color); 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+        }
+        
+        #app-container { 
+            display: flex; 
+            height: 100vh; 
+        }
+        #chat-wrapper { 
+            flex-grow: 1; 
+            display: flex; 
+            flex-direction: column;
+            height: 100%;
+        }
+        main { 
+            flex-grow: 1; 
+            overflow-y: auto; /* Chỉ cho phép vùng tin nhắn được cuộn */
+            padding: 1rem;
+        }
+        #messages { list-style-type: none; margin: 0; padding: 0; }
         #messages > li { background-color: var(--surface-color); padding: 0.75rem 1rem; margin-bottom: 0.5rem; border-radius: 0.8rem; word-wrap: break-word; border: 1px solid var(--border-color); }
         .system-message { color: var(--secondary-text-color); font-style: italic; background: none !important; text-align: center; border: none !important; }
         .message-sender { font-weight: bold; margin-right: 8px; }
-        #form-container { background-color: var(--surface-color); padding: 0.5rem; position: fixed; bottom: 0; left: 0; right: 0; border-top: 1px solid var(--border-color); }
+
+        #form-container { background-color: var(--surface-color); padding: 0.5rem; border-top: 1px solid var(--border-color); }
         #form { display: flex; height: 3rem; }
         #input { background-color: #333; color: var(--primary-text-color); border: 1px solid var(--border-color); padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin-right: 0.5rem; }
         #form button { background: var(--accent-color); border: none; padding: 0 1rem; margin: 0 0.25rem; border-radius: 2rem; color: #fff; cursor: pointer; }
         #clearBtn { background-color: var(--danger-color); }
-        #welcome-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        
+        #user-sidebar {
+            width: 240px;
+            flex-shrink: 0; /* Ngăn sidebar bị co lại */
+            background-color: var(--surface-color);
+            border-left: 1px solid var(--border-color);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            transition: margin-right 0.3s ease-in-out;
+        }
+        #user-sidebar.hidden {
+            margin-right: -282px; /* width + padding*2 + border */
+        }
+        #user-list-header {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+        #user-list { list-style: none; padding: 0; margin: 0; }
+        #user-list li { padding: 0.5rem 0; display: flex; align-items: center; word-break: break-all; }
+        .status-dot { height: 8px; width: 8px; background-color: var(--online-color); border-radius: 50%; margin-right: 10px; flex-shrink: 0; }
+        #toggle-user-list-btn {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 1001;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: none; /* Ban đầu ẩn đi */
+        }
+        
+        #welcome-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
         #welcome-modal { background-color: var(--surface-color); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-color); }
         #welcome-modal h2 { margin-top: 0; }
-        #name-input { width: 80%; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: #333; color: var(--primary-text-color); margin-bottom: 1rem; text-align: center; }
-        #join-btn { width: 50%; padding: 0.75rem; border-radius: 8px; border: none; background-color: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; }
+        #name-input { width: 80%; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: #333; color: var(--primary-text-color); margin-bottom: 1rem; text-align: center; font-size: 1rem; }
+        #join-btn { width: 50%; padding: 0.75rem; border-radius: 8px; border: none; background-color: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; font-size: 1rem; }
     </style>
 </head>
 <body>
@@ -47,21 +113,32 @@
         </div>
     </div>
 
-    <div id="chat-app">
-        <ul id="messages"></ul>
-        <div id="form-container">
-            <form id="form" action="">
-                <input id="input" autocomplete="off" placeholder="Type a message..." />
-                <button type="submit">Send</button>
-                <button id="clearBtn" type="button">Delete</button>
-            </form>
+    <div id="app-container" style="display: none;">
+        <div id="chat-wrapper">
+            <main>
+                <ul id="messages"></ul>
+            </main>
+            <div id="form-container">
+                <form id="form" action="">
+                    <input id="input" autocomplete="off" placeholder="Type a message..." />
+                    <button type="submit">Send</button>
+                    <button id="clearBtn" type="button">Delete</button>
+                </form>
+            </div>
         </div>
+        <aside id="user-sidebar">
+            <div id="user-list-header">Active Users (<span id="user-count">0</span>)</div>
+            <ul id="user-list"></ul>
+        </aside>
     </div>
+    
+    <button id="toggle-user-list-btn">≡</button>
 
     <audio id="notification-sound" src="/sounds/notification.mp3" preload="auto"></audio>
 
     <script>
-        const chatApp = document.getElementById('chat-app');
+        // Lấy các phần tử DOM
+        const appContainer = document.getElementById('app-container');
         const welcomeOverlay = document.getElementById('welcome-overlay');
         const nameForm = document.getElementById('name-form');
         const nameInput = document.getElementById('name-input');
@@ -69,21 +146,30 @@
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
         const clearBtn = document.getElementById('clearBtn');
+        const userSidebar = document.getElementById('user-sidebar');
+        const userList = document.getElementById('user-list');
+        const userCount = document.getElementById('user-count');
+        const toggleBtn = document.getElementById('toggle-user-list-btn');
         const notificationSound = document.getElementById('notification-sound');
         const originalTitle = document.title;
+
+        // Biến trạng thái
         let unreadMessages = 0;
         let ws;
 
+        // Xử lý khi người dùng nhập tên và tham gia
         nameForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const username = nameInput.value.trim();
             if (username) {
                 welcomeOverlay.style.display = 'none';
-                chatApp.style.display = 'block';
+                appContainer.style.display = 'flex';
+                toggleBtn.style.display = 'block';
                 initializeWebSocket(username);
             }
         });
 
+        // Hàm để khởi tạo và quản lý WebSocket
         function initializeWebSocket(username) {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}`);
@@ -94,22 +180,22 @@
 
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                const item = document.createElement('li');
 
-                // Logic chính để hiển thị thông báo
+                if (message.type === 'user_list') {
+                    updateUserList(message.users);
+                    return;
+                }
+
                 if (message.username && document.hidden) {
                     unreadMessages++;
-                    
-                    // 1. Phát âm thanh
                     notificationSound.play().catch(e => console.error("Audio play failed:", e));
-                    // 2. Cập nhật tiêu đề tab
                     document.title = `(${unreadMessages}) ${originalTitle}`;
-                    // 3. THÊM MỚI: Cập nhật huy hiệu ứng dụng
                     if ('setAppBadge' in navigator) {
                         navigator.setAppBadge(unreadMessages);
                     }
                 }
 
+                const item = document.createElement('li');
                 switch (message.type) {
                     case 'clear_confirmed':
                         messages.innerHTML = '';
@@ -123,22 +209,31 @@
                         break;
                 }
                 messages.appendChild(item);
-                window.scrollTo(0, document.body.scrollHeight);
+                // Cuộn xuống tin nhắn cuối cùng
+                messages.parentElement.scrollTop = messages.parentElement.scrollHeight;
             };
         }
         
         function sendMessage(type, content) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: type, content: content }));
+                ws.send(JSON.stringify({ type, content }));
             }
         }
         
-        // Cập nhật sự kiện visibilitychange để xóa huy hiệu
+        function updateUserList(users) {
+            userList.innerHTML = '';
+            userCount.textContent = users.length;
+            users.forEach(user => {
+                const item = document.createElement('li');
+                item.innerHTML = `<span class="status-dot"></span><span style="color: ${user.color};">${user.username}</span>`;
+                userList.appendChild(item);
+            });
+        }
+        
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 unreadMessages = 0;
                 document.title = originalTitle;
-                // THÊM MỚI: Xóa huy hiệu ứng dụng khi người dùng quay lại
                 if ('clearAppBadge' in navigator) {
                     navigator.clearAppBadge();
                 }
@@ -157,6 +252,10 @@
             if (confirm('Are you sure you want to delete all chat history for everyone?')) {
                 sendMessage('clear_request');
             }
+        });
+
+        toggleBtn.addEventListener('click', () => {
+            userSidebar.classList.toggle('hidden');
         });
 
         if ('serviceWorker' in navigator) {
