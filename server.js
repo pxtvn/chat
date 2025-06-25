@@ -19,6 +19,14 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// THÊM MỚI: Route để phục vụ file Service Worker
+app.get('/sw.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'sw.js'));
+});
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
 // Tạo server HTTP từ ứng dụng express
 const server = http.createServer(app);
 // Gắn WebSocket server vào HTTP server
@@ -63,3 +71,4 @@ wss.on('connection', ws => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`Server is listening on port ${PORT}`));
+

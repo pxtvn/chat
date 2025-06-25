@@ -3,8 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quick Chat</title> <style>
-        /* CSS không thay đổi so với phiên bản giao diện tối trước đó */
+    
+    <meta name="theme-color" content="#1E1E1E"/>
+    <link rel="manifest" href="/manifest.json">
+
+    <title>Quick Chat</title>
+    <style>
         :root {
             --background-color: #121212;
             --surface-color: #1E1E1E;
@@ -44,30 +48,25 @@
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
         const clearBtn = document.getElementById('clearBtn');
-        // THÊM MỚI: Lấy phần tử audio và các biến quản lý thông báo
         const notificationSound = document.getElementById('notification-sound');
         const originalTitle = document.title;
         let unreadMessages = 0;
-        let myUsername = ''; // Sẽ được cập nhật sau
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}`);
 
         function sendMessage(type, content) {
-            ws.send(JSON.stringify({ type: type, content: content }));
+            if(ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: type, content: content }));
+            }
         }
         
         ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
             const item = document.createElement('li');
 
-            // Logic chính để hiển thị thông báo
-            // Chỉ thông báo nếu tin nhắn không phải của mình VÀ cửa sổ đang không được xem
             if (message.username && document.hidden) {
-                // 1. Phát âm thanh
                 notificationSound.play().catch(e => console.error("Audio play failed:", e));
-
-                // 2. Cập nhật tiêu đề tab
                 unreadMessages++;
                 document.title = `(${unreadMessages}) ${originalTitle}`;
             }
@@ -88,7 +87,6 @@
             window.scrollTo(0, document.body.scrollHeight);
         };
         
-        // THÊM MỚI: Reset thông báo khi người dùng quay lại tab
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 unreadMessages = 0;
@@ -98,14 +96,31 @@
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value) { sendMessage('text', input.value); input.value = ''; }
+            if (input.value) { 
+                sendMessage('text', input.value); 
+                input.value = ''; 
+            }
         });
         
         clearBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to delete all chat history for everyone?')) {
-                sendMessage('clear_request');
+                // Gửi yêu cầu xóa dưới dạng JSON
+                 if(ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'clear_request' }));
+                }
             }
         });
+
+        // PWA: Đoạn script để đăng ký Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('ServiceWorker registration successful:', registration.scope);
+                }, err => {
+                    console.log('ServiceWorker registration failed:', err);
+                });
+            });
+        }
     </script>
 </body>
 </html>
