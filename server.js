@@ -1,5 +1,5 @@
 const http = require('http');
-const express = require('express'); // THÊM express
+const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
 
@@ -8,31 +8,29 @@ const USER_COLORS = [
     '#A0C4FF', '#BDB2FF', '#FFC6FF', '#FFAB91', '#B2DFDB'
 ];
 
-// Khởi tạo ứng dụng express
+// 1. Khởi tạo ứng dụng express
 const app = express();
-// Phục vụ các file tĩnh từ thư mục 'public'
-// Giờ đây các file trong public/sounds/ hoặc public/stickers/ đều có thể truy cập được
+
+// 2. Cấu hình express để phục vụ các file tĩnh (icons, sounds, manifest) từ thư mục 'public'
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Phục vụ file index.html khi người dùng truy cập vào trang chính
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// THÊM MỚI: Route để phục vụ file Service Worker
+// 3. Cấu hình express để phục vụ file PWA Service Worker
 app.get('/sw.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'sw.js'));
 });
 
+// 4. Cấu hình express để phục vụ file index.html cho tất cả các request còn lại
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// 5. Tạo server HTTP DUY NHẤT từ ứng dụng express đã được cấu hình
 const server = http.createServer(app);
+
+// 6. Gắn WebSocket server vào HTTP server đó
 const wss = new WebSocket.Server({ server });
 
-// Tạo server HTTP từ ứng dụng express
-const server = http.createServer(app);
-// Gắn WebSocket server vào HTTP server
-const wss = new WebSocket.Server({ server });
-
-// Toàn bộ logic WebSocket từ đây trở xuống không thay đổi
+// --- Toàn bộ logic WebSocket giữ nguyên, không thay đổi ---
 function broadcast(data) {
     const messageString = JSON.stringify(data);
     wss.clients.forEach(client => {
@@ -68,7 +66,8 @@ wss.on('connection', ws => {
         broadcast({ type: 'system', content: `${ws.username} has left the chat.` });
     });
 });
+// --- Kết thúc logic WebSocket ---
 
+// 7. Khởi động server HTTP (Render sẽ cung cấp cổng)
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`Server is listening on port ${PORT}`));
-
