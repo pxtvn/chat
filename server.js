@@ -3,85 +3,153 @@ const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
 
-const USER_COLORS = [
-    '#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', 
-    '#A0C4FF', '#BDB2FF', '#FFC6FF', '#FFAB91', '#B2DFDB'
-];
-
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+// --- Cấu trúc dữ liệu mới ---
+const rooms = {}; // Lưu trữ tất cả các phòng: { roomName: { clients: Set(), password: '...' } }
+const USER_COLORS = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF'];
+
+// --- Cài đặt Express ---
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/sw.js', (req, res) => res.sendFile(path.join(__dirname, 'sw.js')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
-
-// Hàm gửi tin nhắn cho tất cả mọi người
-function broadcast(data) {
-    const messageString = JSON.stringify(data);
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) client.send(messageString);
-    });
+// --- Các hàm broadcast được cập nhật ---
+function broadcastRoomList() {
+    const roomList = Object.keys(rooms).map(roomName => ({
+        name: roomName,
+        isProtected: !!rooms[roomName].password, // true nếu có mật khẩu
+        userCount: rooms[roomName].clients.size
+    }));
+    broadcastToAll({ type: 'room_list_update', rooms: roomList });
 }
 
-// THÊM MỚI: Hàm lấy và gửi danh sách người dùng hiện tại
-function broadcastUserList() {
-    const userList = [];
-    wss.clients.forEach(client => {
-        // Chỉ thêm những user đã đặt tên vào danh sách
-        if (client.username) {
-            userList.push({ username: client.username, color: client.color });
+function broadcastToRoom(roomName, data, sender) {
+    const room = rooms[roomName];
+    if (!room) return;
+    const message = JSON.stringify(data);
+    room.clients.forEach(client => {
+        // Gửi cho tất cả mọi người trong phòng (có thể bao gồm cả người gửi)
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
         }
     });
-    // Gửi danh sách này đi với type là 'user_list'
-    broadcast({ type: 'user_list', users: userList });
 }
 
+function broadcastToAll(data) {
+    const message = JSON.stringify(data);
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) client.send(message);
+    });
+}
+
+// --- Xử lý kết nối ---
 wss.on('connection', ws => {
-    console.log('Client connected, waiting for username.');
+    console.log('Client connected.');
 
     ws.on('message', message => {
-        let data;
-        try {
-            data = JSON.parse(message);
+        const data = JSON.parse(message);
 
-            if (data.type === 'set_username') {
+        switch (data.type) {
+            case 'set_username':
                 ws.username = data.content;
-                ws.color = USER_COLORS[wss.clients.size % USER_COLORS.length];
-                console.log(`${ws.username} has set their name.`);
-                
-                // Gửi thông báo hệ thống và CẬP NHẬT DANH SÁCH USER
-                broadcast({ type: 'system', content: `${ws.username} has joined the chat.` });
-                broadcastUserList(); // Gửi danh sách mới nhất
-                return;
-            }
+                ws.color = USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
+                console.log(`${ws.username} set their name.`);
+                // Gửi danh sách phòng ban đầu cho người dùng mới
+                ws.send(JSON.stringify({
+                    type: 'room_list_update',
+                    rooms: Object.keys(rooms).map(roomName => ({
+                        name: roomName,
+                        isProtected: !!rooms[roomName].password,
+                        userCount: rooms[roomName].clients.size
+                    }))
+                }));
+                break;
+            
+            case 'create_room':
+                if (rooms[data.roomName]) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Room name already exists.' }));
+                    return;
+                }
+                rooms[data.roomName] = {
+                    clients: new Set(),
+                    password: data.password || null
+                };
+                console.log(`Room "${data.roomName}" created.`);
+                broadcastRoomList();
+                // Tự động cho người tạo vào phòng luôn
+                joinRoom(ws, data.roomName);
+                break;
 
-            if (!ws.username) return;
+            case 'join_room':
+                const room = rooms[data.roomName];
+                if (!room) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Room not found.' }));
+                    return;
+                }
+                if (room.password && room.password !== data.password) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Incorrect password.' }));
+                    return;
+                }
+                joinRoom(ws, data.roomName);
+                break;
 
-            switch (data.type) {
-                case 'clear_request':
-                    broadcast({ type: 'clear_confirmed' });
-                    break;
-                case 'text':
-                    data.username = ws.username;
-                    data.color = ws.color;
-                    broadcast(data);
-                    break;
-            }
-        } catch (error) { console.error('Invalid message format:', error); }
+            case 'text':
+                if (ws.currentRoom) {
+                    broadcastToRoom(ws.currentRoom, {
+                        type: 'text',
+                        username: ws.username,
+                        color: ws.color,
+                        content: data.content
+                    }, ws);
+                }
+                break;
+        }
     });
 
     ws.on('close', () => {
-        if (ws.username) {
-            console.log(`${ws.username} disconnected.`);
-            // Gửi thông báo hệ thống và CẬP NHẬT DANH SÁCH USER
-            broadcast({ type: 'system', content: `${ws.username} has left the chat.` });
-            broadcastUserList(); // Gửi danh sách mới nhất
-        } else {
-            console.log('A client disconnected before setting a name.');
-        }
+        leaveCurrentRoom(ws);
+        console.log('Client disconnected.');
     });
 });
+
+function leaveCurrentRoom(ws) {
+    if (ws.currentRoom) {
+        const room = rooms[ws.currentRoom];
+        if (room) {
+            room.clients.delete(ws);
+            broadcastToRoom(ws.currentRoom, {
+                type: 'system',
+                content: `${ws.username} has left the room.`
+            });
+            // Nếu phòng trống, có thể xóa đi (tùy chọn)
+            // if (room.clients.size === 0) {
+            //     delete rooms[ws.currentRoom];
+            // }
+        }
+        ws.currentRoom = null;
+        broadcastRoomList();
+    }
+}
+
+function joinRoom(ws, roomName) {
+    leaveCurrentRoom(ws); // Rời phòng cũ trước
+    const room = rooms[roomName];
+    room.clients.add(ws);
+    ws.currentRoom = roomName;
+    
+    // Gửi thông báo vào phòng mới
+    broadcastToRoom(roomName, {
+        type: 'system',
+        content: `${ws.username} has joined the room.`
+    });
+
+    // Gửi tín hiệu vào phòng thành công cho client
+    ws.send(JSON.stringify({ type: 'join_success', roomName: roomName }));
+    broadcastRoomList();
+}
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`Server is listening on port ${PORT}`));

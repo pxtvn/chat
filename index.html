@@ -7,108 +7,69 @@
     <link rel="manifest" href="/manifest.json">
     <title>Quick Chat</title>
     <style>
+        /* CSS được cập nhật và sắp xếp lại */
         :root {
             --background-color: #121212;
             --surface-color: #1E1E1E;
             --primary-text-color: #E0E0E0;
             --secondary-text-color: #A0A0A0;
             --accent-color: #2979FF;
-            --danger-color: #CF6679;
             --border-color: #333;
-            --online-color: #28a745;
         }
         * { box-sizing: border-box; }
-        html, body {
-            height: 100%;
-            overflow: hidden; /* Ngăn body bị cuộn */
-        }
-        body { 
-            background-color: var(--background-color); 
-            color: var(--primary-text-color); 
-            margin: 0; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-        }
+        html, body { height: 100%; overflow: hidden; }
+        body { background-color: var(--background-color); color: var(--primary-text-color); margin: 0; font-family: sans-serif; }
         
-        #app-container { 
-            display: flex; 
-            height: 100vh; 
-        }
-        #chat-wrapper { 
-            flex-grow: 1; 
-            display: flex; 
-            flex-direction: column;
-            height: 100%;
-        }
-        main { 
-            flex-grow: 1; 
-            overflow-y: auto; /* Chỉ cho phép vùng tin nhắn được cuộn */
-            padding: 1rem;
-        }
+        #app-container, #chat-wrapper { display: flex; height: 100%; }
+        #chat-wrapper { flex-grow: 1; flex-direction: column; }
+        main { flex-grow: 1; overflow-y: auto; padding: 1rem; }
         #messages { list-style-type: none; margin: 0; padding: 0; }
         #messages > li { background-color: var(--surface-color); padding: 0.75rem 1rem; margin-bottom: 0.5rem; border-radius: 0.8rem; word-wrap: break-word; border: 1px solid var(--border-color); }
         .system-message { color: var(--secondary-text-color); font-style: italic; background: none !important; text-align: center; border: none !important; }
         .message-sender { font-weight: bold; margin-right: 8px; }
 
         #form-container { background-color: var(--surface-color); padding: 0.5rem; border-top: 1px solid var(--border-color); }
-        #form { display: flex; height: 3rem; }
+        #form { display: none; height: 3rem; }
         #input { background-color: #333; color: var(--primary-text-color); border: 1px solid var(--border-color); padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin-right: 0.5rem; }
-        #form button { background: var(--accent-color); border: none; padding: 0 1rem; margin: 0 0.25rem; border-radius: 2rem; color: #fff; cursor: pointer; }
-        #clearBtn { background-color: var(--danger-color); }
+        #form button { background: var(--accent-color); border: none; padding: 0 1.5rem; border-radius: 2rem; color: #fff; cursor: pointer; }
         
-        #user-sidebar {
-            width: 240px;
-            flex-shrink: 0; /* Ngăn sidebar bị co lại */
-            background-color: var(--surface-color);
-            border-left: 1px solid var(--border-color);
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            transition: margin-right 0.3s ease-in-out;
-        }
-        #user-sidebar.hidden {
-            margin-right: -282px; /* width + padding*2 + border */
-        }
-        #user-list-header {
-            font-size: 1.1rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.5rem;
-        }
-        #user-list { list-style: none; padding: 0; margin: 0; }
-        #user-list li { padding: 0.5rem 0; display: flex; align-items: center; word-break: break-all; }
-        .status-dot { height: 8px; width: 8px; background-color: var(--online-color); border-radius: 50%; margin-right: 10px; flex-shrink: 0; }
-        #toggle-user-list-btn {
-            position: fixed;
-            top: 15px;
-            right: 15px;
-            z-index: 1001;
-            background: var(--accent-color);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            font-size: 1.5rem;
-            cursor: pointer;
-            display: none; /* Ban đầu ẩn đi */
-        }
-        
-        #welcome-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
-        #welcome-modal { background-color: var(--surface-color); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-color); }
-        #welcome-modal h2 { margin-top: 0; }
-        #name-input { width: 80%; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: #333; color: var(--primary-text-color); margin-bottom: 1rem; text-align: center; font-size: 1rem; }
-        #join-btn { width: 50%; padding: 0.75rem; border-radius: 8px; border: none; background-color: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; font-size: 1rem; }
+        #room-sidebar { width: 280px; flex-shrink: 0; background-color: var(--surface-color); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; }
+        #room-list-header { padding: 1rem; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid var(--border-color); }
+        #room-list { list-style: none; padding: 1rem; margin: 0; overflow-y: auto; }
+        #room-list li { padding: 0.75rem; margin-bottom: 0.5rem; background: #333; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; }
+        #room-list li:hover { background: #444; }
+        .lock-icon { margin-left: 8px; }
+        .user-count { color: var(--secondary-text-color); }
+        #create-room-btn { display: block; width: calc(100% - 2rem); margin: 1rem; padding: 0.75rem; font-size: 1rem; background: var(--accent-color); color: white; border: none; border-radius: 8px; cursor: pointer; }
+
+        #welcome-overlay, #create-room-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
+        #create-room-overlay { display: none; }
+        .modal { background-color: var(--surface-color); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-color); }
+        .modal h2 { margin-top: 0; }
+        .modal input { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: #333; color: var(--primary-text-color); margin-bottom: 1rem; }
+        .modal button { width: 50%; padding: 0.75rem; border-radius: 8px; border: none; background-color: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; }
+        .modal .close-btn { position: absolute; top: 10px; right: 15px; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
     </style>
 </head>
 <body>
     <div id="welcome-overlay">
-        <div id="welcome-modal">
-            <h2>Welcome to Quick Chat</h2>
-            <p>Please enter your name to join:</p>
+        <div class="modal">
+            <h2>Chào mừng tới Quick Chat</h2>
             <form id="name-form">
-                <input id="name-input" type="text" autocomplete="off" maxlength="20" required />
-                <button id="join-btn" type="submit">Join Chat</button>
+                <input id="name-input" placeholder="Nhập tên của bạn..." required />
+                <button type="submit">Tham gia</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="create-room-overlay">
+        <div class="modal">
+            <button class="close-btn" id="close-create-room-btn">&times;</button>
+            <h2>Tạo phòng mới</h2>
+            <form id="create-room-form">
+                <input id="room-name-input" placeholder="Tên phòng..." required />
+                <input id="room-password-input" type="password" placeholder="Mật khẩu (bỏ trống nếu không cần)" />
+                <button type="submit">Tạo phòng</button>
             </form>
         </div>
     </div>
@@ -120,148 +81,151 @@
             </main>
             <div id="form-container">
                 <form id="form" action="">
-                    <input id="input" autocomplete="off" placeholder="Type a message..." />
-                    <button type="submit">Send</button>
-                    <button id="clearBtn" type="button">Delete</button>
+                    <input id="input" autocomplete="off" placeholder="Nhập tin nhắn..." />
+                    <button type="submit">Gửi</button>
                 </form>
             </div>
         </div>
-        <aside id="user-sidebar">
-            <div id="user-list-header">Active Users (<span id="user-count">0</span>)</div>
-            <ul id="user-list"></ul>
+        <aside id="room-sidebar">
+            <div id="room-list-header">Danh sách phòng</div>
+            <ul id="room-list"></ul>
+            <button id="create-room-btn">Tạo phòng mới</button>
         </aside>
     </div>
-    
-    <button id="toggle-user-list-btn">≡</button>
-
-    <audio id="notification-sound" src="/sounds/notification.mp3" preload="auto"></audio>
 
     <script>
-        // Lấy các phần tử DOM
-        const appContainer = document.getElementById('app-container');
+        // DOM Elements
         const welcomeOverlay = document.getElementById('welcome-overlay');
         const nameForm = document.getElementById('name-form');
         const nameInput = document.getElementById('name-input');
+        const appContainer = document.getElementById('app-container');
+        const messages = document.getElementById('messages');
         const form = document.getElementById('form');
         const input = document.getElementById('input');
-        const messages = document.getElementById('messages');
-        const clearBtn = document.getElementById('clearBtn');
-        const userSidebar = document.getElementById('user-sidebar');
-        const userList = document.getElementById('user-list');
-        const userCount = document.getElementById('user-count');
-        const toggleBtn = document.getElementById('toggle-user-list-btn');
-        const notificationSound = document.getElementById('notification-sound');
-        const originalTitle = document.title;
+        const roomList = document.getElementById('room-list');
+        const createRoomBtn = document.getElementById('create-room-btn');
+        const createRoomOverlay = document.getElementById('create-room-overlay');
+        const createRoomForm = document.getElementById('create-room-form');
+        const closeCreateRoomBtn = document.getElementById('close-create-room-btn');
 
-        // Biến trạng thái
-        let unreadMessages = 0;
         let ws;
 
-        // Xử lý khi người dùng nhập tên và tham gia
+        // --- Event Listeners ---
         nameForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const username = nameInput.value.trim();
-            if (username) {
+            if (nameInput.value.trim()) {
                 welcomeOverlay.style.display = 'none';
                 appContainer.style.display = 'flex';
-                toggleBtn.style.display = 'block';
-                initializeWebSocket(username);
+                initializeWebSocket(nameInput.value.trim());
             }
         });
 
-        // Hàm để khởi tạo và quản lý WebSocket
-        function initializeWebSocket(username) {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}`);
+        createRoomBtn.addEventListener('click', () => {
+            createRoomOverlay.style.display = 'flex';
+        });
 
-            ws.onopen = () => {
-                sendMessage('set_username', username);
-            };
+        closeCreateRoomBtn.addEventListener('click', () => {
+            createRoomOverlay.style.display = 'none';
+        });
 
-            ws.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-
-                if (message.type === 'user_list') {
-                    updateUserList(message.users);
-                    return;
-                }
-
-                if (message.username && document.hidden) {
-                    unreadMessages++;
-                    notificationSound.play().catch(e => console.error("Audio play failed:", e));
-                    document.title = `(${unreadMessages}) ${originalTitle}`;
-                    if ('setAppBadge' in navigator) {
-                        navigator.setAppBadge(unreadMessages);
-                    }
-                }
-
-                const item = document.createElement('li');
-                switch (message.type) {
-                    case 'clear_confirmed':
-                        messages.innerHTML = '';
-                        return;
-                    case 'system':
-                        item.classList.add('system-message');
-                        item.textContent = message.content;
-                        break;
-                    case 'text':
-                        item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
-                        break;
-                }
-                messages.appendChild(item);
-                // Cuộn xuống tin nhắn cuối cùng
-                messages.parentElement.scrollTop = messages.parentElement.scrollHeight;
-            };
-        }
-        
-        function sendMessage(type, content) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type, content }));
-            }
-        }
-        
-        function updateUserList(users) {
-            userList.innerHTML = '';
-            userCount.textContent = users.length;
-            users.forEach(user => {
-                const item = document.createElement('li');
-                item.innerHTML = `<span class="status-dot"></span><span style="color: ${user.color};">${user.username}</span>`;
-                userList.appendChild(item);
-            });
-        }
-        
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                unreadMessages = 0;
-                document.title = originalTitle;
-                if ('clearAppBadge' in navigator) {
-                    navigator.clearAppBadge();
-                }
+        createRoomForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const roomName = document.getElementById('room-name-input').value;
+            const password = document.getElementById('room-password-input').value;
+            if (roomName) {
+                sendMessage('create_room', { roomName, password });
+                createRoomOverlay.style.display = 'none';
+                createRoomForm.reset();
             }
         });
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value) { 
-                sendMessage('text', input.value); 
-                input.value = ''; 
+            if (input.value) {
+                sendMessage('text', { content: input.value });
+                input.value = '';
             }
         });
+
+        roomList.addEventListener('click', (e) => {
+            const roomItem = e.target.closest('li');
+            if (roomItem) {
+                const roomName = roomItem.dataset.roomName;
+                const isProtected = roomItem.dataset.isProtected === 'true';
+                let password = '';
+                if (isProtected) {
+                    password = prompt(`Phòng "${roomName}" được bảo vệ. Vui lòng nhập mật khẩu:`);
+                    if (password === null) return; // Người dùng nhấn cancel
+                }
+                sendMessage('join_room', { roomName, password });
+            }
+        });
+
+        // --- WebSocket Logic ---
+        function initializeWebSocket(username) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+            ws.onopen = () => sendMessage('set_username', username);
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                switch (data.type) {
+                    case 'room_list_update':
+                        updateRoomList(data.rooms);
+                        break;
+                    case 'join_success':
+                        messages.innerHTML = `<li class="system-message">Bạn đã vào phòng "${data.roomName}".</li>`;
+                        form.style.display = 'flex';
+                        break;
+                    case 'text':
+                    case 'system':
+                        appendMessage(data);
+                        break;
+                    case 'error':
+                        alert(`Lỗi: ${data.message}`);
+                        break;
+                }
+            };
+        }
+
+        function sendMessage(type, payload) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type, ...payload }));
+            }
+        }
         
-        clearBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to delete all chat history for everyone?')) {
-                sendMessage('clear_request');
+        function updateRoomList(rooms) {
+            roomList.innerHTML = '';
+            if (rooms.length === 0) {
+                roomList.innerHTML = '<li>Chưa có phòng nào.</li>';
+                return;
             }
-        });
-
-        toggleBtn.addEventListener('click', () => {
-            userSidebar.classList.toggle('hidden');
-        });
-
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js');
+            rooms.forEach(room => {
+                const item = document.createElement('li');
+                item.dataset.roomName = room.name;
+                item.dataset.isProtected = room.isProtected;
+                item.innerHTML = `
+                    <div>
+                        <span>${room.name}</span>
+                        <span class="user-count">(${room.userCount})</span>
+                    </div>
+                    ${room.isProtected ? '<span class="lock-icon">🔒</span>' : ''}
+                `;
+                roomList.appendChild(item);
             });
+        }
+        
+        function appendMessage(message) {
+            const item = document.createElement('li');
+            if (message.type === 'system') {
+                item.classList.add('system-message');
+                item.textContent = message.content;
+            } else {
+                item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
+            }
+            messages.appendChild(item);
+            messages.parentElement.scrollTop = messages.parentElement.scrollHeight;
         }
     </script>
 </body>
