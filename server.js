@@ -7,8 +7,8 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// --- Cấu trúc dữ liệu mới ---
-const rooms = {}; // Lưu trữ tất cả các phòng: { roomName: { clients: Set(), password: '...' } }
+// --- Cấu trúc dữ liệu ---
+const rooms = {}; // { roomName: { clients: Set(), password: '...', deleteTimeout: null } }
 const USER_COLORS = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF'];
 
 // --- Cài đặt Express ---
@@ -16,33 +16,43 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/sw.js', (req, res) => res.sendFile(path.join(__dirname, 'sw.js')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-// --- Các hàm broadcast được cập nhật ---
-function broadcastRoomList() {
-    const roomList = Object.keys(rooms).map(roomName => ({
-        name: roomName,
-        isProtected: !!rooms[roomName].password, // true nếu có mật khẩu
-        userCount: rooms[roomName].clients.size
-    }));
-    broadcastToAll({ type: 'room_list_update', rooms: roomList });
-}
-
-function broadcastToRoom(roomName, data, sender) {
-    const room = rooms[roomName];
-    if (!room) return;
-    const message = JSON.stringify(data);
-    room.clients.forEach(client => {
-        // Gửi cho tất cả mọi người trong phòng (có thể bao gồm cả người gửi)
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-        }
-    });
-}
-
+// --- Các hàm broadcast ---
 function broadcastToAll(data) {
     const message = JSON.stringify(data);
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) client.send(message);
     });
+}
+
+function broadcastToRoom(roomName, data) {
+    const room = rooms[roomName];
+    if (!room) return;
+    const message = JSON.stringify(data);
+    room.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) client.send(message);
+    });
+}
+
+function broadcastStateUpdate() {
+    // Gửi cả danh sách phòng và danh sách người dùng toàn cục trong một lần
+    const roomList = Object.keys(rooms).map(roomName => ({
+        name: roomName,
+        isProtected: !!rooms[roomName].password,
+        userCount: rooms[roomName].clients.size
+    }));
+
+    const globalUserList = [];
+    wss.clients.forEach(client => {
+        if (client.username) {
+            globalUserList.push({
+                username: client.username,
+                color: client.color,
+                currentRoom: client.currentRoom || 'Lobby' // Hiển thị phòng hiện tại hoặc "Lobby"
+            });
+        }
+    });
+    
+    broadcastToAll({ type: 'state_update', rooms: roomList, users: globalUserList });
 }
 
 // --- Xử lý kết nối ---
@@ -51,46 +61,32 @@ wss.on('connection', ws => {
 
     ws.on('message', message => {
         const data = JSON.parse(message);
-
         switch (data.type) {
             case 'set_username':
                 ws.username = data.content;
                 ws.color = USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
                 console.log(`${ws.username} set their name.`);
-                // Gửi danh sách phòng ban đầu cho người dùng mới
-                ws.send(JSON.stringify({
-                    type: 'room_list_update',
-                    rooms: Object.keys(rooms).map(roomName => ({
-                        name: roomName,
-                        isProtected: !!rooms[roomName].password,
-                        userCount: rooms[roomName].clients.size
-                    }))
-                }));
+                broadcastStateUpdate(); // Gửi trạng thái ban đầu
                 break;
             
             case 'create_room':
                 if (rooms[data.roomName]) {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Room name already exists.' }));
+                    ws.send(JSON.stringify({ type: 'error', message: 'Tên phòng đã tồn tại.' }));
                     return;
                 }
-                rooms[data.roomName] = {
-                    clients: new Set(),
-                    password: data.password || null
-                };
+                rooms[data.roomName] = { clients: new Set(), password: data.password || null, deleteTimeout: null };
                 console.log(`Room "${data.roomName}" created.`);
-                broadcastRoomList();
-                // Tự động cho người tạo vào phòng luôn
-                joinRoom(ws, data.roomName);
+                joinRoom(ws, data.roomName); // Tự động vào phòng sau khi tạo
                 break;
 
             case 'join_room':
-                const room = rooms[data.roomName];
-                if (!room) {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Room not found.' }));
+                const roomToJoin = rooms[data.roomName];
+                if (!roomToJoin) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Phòng không tồn tại.' }));
                     return;
                 }
-                if (room.password && room.password !== data.password) {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Incorrect password.' }));
+                if (roomToJoin.password && roomToJoin.password !== data.password) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Sai mật khẩu.' }));
                     return;
                 }
                 joinRoom(ws, data.roomName);
@@ -98,57 +94,68 @@ wss.on('connection', ws => {
 
             case 'text':
                 if (ws.currentRoom) {
-                    broadcastToRoom(ws.currentRoom, {
-                        type: 'text',
-                        username: ws.username,
-                        color: ws.color,
-                        content: data.content
-                    }, ws);
+                    broadcastToRoom(ws.currentRoom, { type: 'text', username: ws.username, color: ws.color, content: data.content });
+                }
+                break;
+            
+            case 'clear_room_history':
+                if(ws.currentRoom) {
+                    broadcastToRoom(ws.currentRoom, {type: 'clear_confirmed'});
                 }
                 break;
         }
     });
 
     ws.on('close', () => {
-        leaveCurrentRoom(ws);
-        console.log('Client disconnected.');
+        if (ws.username) {
+            console.log(`${ws.username} disconnected.`);
+            leaveCurrentRoom(ws);
+        }
     });
 });
 
 function leaveCurrentRoom(ws) {
-    if (ws.currentRoom) {
-        const room = rooms[ws.currentRoom];
-        if (room) {
-            room.clients.delete(ws);
-            broadcastToRoom(ws.currentRoom, {
-                type: 'system',
-                content: `${ws.username} has left the room.`
-            });
-            // Nếu phòng trống, có thể xóa đi (tùy chọn)
-            // if (room.clients.size === 0) {
-            //     delete rooms[ws.currentRoom];
-            // }
-        }
+    const roomName = ws.currentRoom;
+    if (roomName && rooms[roomName]) {
+        const room = rooms[roomName];
+        room.clients.delete(ws);
         ws.currentRoom = null;
-        broadcastRoomList();
+        
+        broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã rời phòng.` });
+        
+        // TÍNH NĂNG MỚI: Tự động xóa phòng sau 3 phút nếu trống
+        if (room.clients.size === 0) {
+            console.log(`Room "${roomName}" is empty. Scheduling deletion in 3 minutes.`);
+            room.deleteTimeout = setTimeout(() => {
+                // Kiểm tra lại một lần nữa phòng có còn trống không trước khi xóa
+                if (rooms[roomName] && rooms[roomName].clients.size === 0) {
+                    delete rooms[roomName];
+                    console.log(`Room "${roomName}" deleted due to inactivity.`);
+                    broadcastStateUpdate(); // Cập nhật lại danh sách phòng
+                }
+            }, 180000); // 3 phút = 180,000 milliseconds
+        }
+        broadcastStateUpdate();
     }
 }
 
 function joinRoom(ws, roomName) {
-    leaveCurrentRoom(ws); // Rời phòng cũ trước
+    leaveCurrentRoom(ws);
     const room = rooms[roomName];
+    
+    // TÍNH NĂNG MỚI: Hủy hẹn giờ xóa phòng nếu có người vào lại
+    if (room.deleteTimeout) {
+        clearTimeout(room.deleteTimeout);
+        room.deleteTimeout = null;
+        console.log(`Deletion for room "${roomName}" cancelled.`);
+    }
+
     room.clients.add(ws);
     ws.currentRoom = roomName;
     
-    // Gửi thông báo vào phòng mới
-    broadcastToRoom(roomName, {
-        type: 'system',
-        content: `${ws.username} has joined the room.`
-    });
-
-    // Gửi tín hiệu vào phòng thành công cho client
+    broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã vào phòng.` });
     ws.send(JSON.stringify({ type: 'join_success', roomName: roomName }));
-    broadcastRoomList();
+    broadcastStateUpdate();
 }
 
 const PORT = process.env.PORT || 10000;
