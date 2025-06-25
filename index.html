@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
     <meta name="theme-color" content="#1E1E1E"/>
     <link rel="manifest" href="/manifest.json">
-
     <title>Quick Chat</title>
     <style>
         :root {
@@ -19,6 +17,10 @@
             --border-color: #333;
         }
         body { background-color: var(--background-color); color: var(--primary-text-color); margin: 0; padding-bottom: 5rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        
+        /* Giao diện chính của ứng dụng chat, ban đầu sẽ bị ẩn */
+        #chat-app { display: none; }
+
         #messages { list-style-type: none; margin: 0; padding: 1rem; }
         #messages > li { background-color: var(--surface-color); padding: 0.75rem 1rem; margin-bottom: 0.5rem; border-radius: 0.8rem; word-wrap: break-word; border: 1px solid var(--border-color); }
         .system-message { color: var(--secondary-text-color); font-style: italic; background: none !important; text-align: center; border: none !important; }
@@ -28,22 +30,81 @@
         #input { background-color: #333; color: var(--primary-text-color); border: 1px solid var(--border-color); padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin-right: 0.5rem; }
         #form button { background: var(--accent-color); border: none; padding: 0 1rem; margin: 0 0.25rem; border-radius: 2rem; color: #fff; cursor: pointer; }
         #clearBtn { background-color: var(--danger-color); }
+
+        /* THÊM MỚI: CSS cho màn hình nhập tên (modal) */
+        #welcome-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        #welcome-modal {
+            background-color: var(--surface-color);
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+        #welcome-modal h2 { margin-top: 0; }
+        #name-input {
+            width: 80%;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background-color: #333;
+            color: var(--primary-text-color);
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        #join-btn {
+            width: 50%;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: none;
+            background-color: var(--accent-color);
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <ul id="messages"></ul>
+    <div id="welcome-overlay">
+        <div id="welcome-modal">
+            <h2>Welcome to Quick Chat</h2>
+            <p>Please enter your name to join:</p>
+            <form id="name-form">
+                <input id="name-input" type="text" autocomplete="off" maxlength="20" required />
+                <button id="join-btn" type="submit">Join Chat</button>
+            </form>
+        </div>
+    </div>
 
-    <div id="form-container">
-        <form id="form" action="">
-            <input id="input" autocomplete="off" placeholder="Type a message..." />
-            <button type="submit">Send</button>
-            <button id="clearBtn" type="button">Delete</button>
-        </form>
+    <div id="chat-app">
+        <ul id="messages"></ul>
+        <div id="form-container">
+            <form id="form" action="">
+                <input id="input" autocomplete="off" placeholder="Type a message..." />
+                <button type="submit">Send</button>
+                <button id="clearBtn" type="button">Delete</button>
+            </form>
+        </div>
     </div>
 
     <audio id="notification-sound" src="/sounds/notification.mp3" preload="auto"></audio>
 
     <script>
+        const chatApp = document.getElementById('chat-app');
+        const welcomeOverlay = document.getElementById('welcome-overlay');
+        const nameForm = document.getElementById('name-form');
+        const nameInput = document.getElementById('name-input');
+
         const form = document.getElementById('form');
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
@@ -52,40 +113,64 @@
         const originalTitle = document.title;
         let unreadMessages = 0;
 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${window.location.host}`);
+        let ws; // Khai báo biến WebSocket ở phạm vi rộng hơn
 
+        // Xử lý khi người dùng nhập tên và tham gia
+        nameForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = nameInput.value.trim();
+            if (username) {
+                // Ẩn màn hình chào mừng và hiện giao diện chat
+                welcomeOverlay.style.display = 'none';
+                chatApp.style.display = 'block';
+                // Khởi tạo kết nối WebSocket SAU KHI có tên
+                initializeWebSocket(username);
+            }
+        });
+
+        // Hàm để khởi tạo và quản lý WebSocket
+        function initializeWebSocket(username) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+            // THÊM MỚI: Gửi tên người dùng đến server ngay khi kết nối thành công
+            ws.onopen = () => {
+                console.log('WebSocket connected. Sending username...');
+                sendMessage('set_username', username);
+            };
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                const item = document.createElement('li');
+
+                if (message.username && document.hidden) {
+                    notificationSound.play().catch(e => console.error("Audio play failed:", e));
+                    unreadMessages++;
+                    document.title = `(${unreadMessages}) ${originalTitle}`;
+                }
+
+                switch (message.type) {
+                    case 'clear_confirmed':
+                        messages.innerHTML = '';
+                        return;
+                    case 'system':
+                        item.classList.add('system-message');
+                        item.textContent = message.content;
+                        break;
+                    case 'text':
+                        item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
+                        break;
+                }
+                messages.appendChild(item);
+                window.scrollTo(0, document.body.scrollHeight);
+            };
+        }
+        
         function sendMessage(type, content) {
-            if(ws.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: type, content: content }));
             }
         }
-        
-        ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            const item = document.createElement('li');
-
-            if (message.username && document.hidden) {
-                notificationSound.play().catch(e => console.error("Audio play failed:", e));
-                unreadMessages++;
-                document.title = `(${unreadMessages}) ${originalTitle}`;
-            }
-
-            switch (message.type) {
-                case 'clear_confirmed':
-                    messages.innerHTML = '';
-                    return;
-                case 'system':
-                    item.classList.add('system-message');
-                    item.textContent = message.content;
-                    break;
-                case 'text':
-                    item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
-                    break;
-            }
-            messages.appendChild(item);
-            window.scrollTo(0, document.body.scrollHeight);
-        };
         
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
@@ -104,21 +189,13 @@
         
         clearBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to delete all chat history for everyone?')) {
-                // Gửi yêu cầu xóa dưới dạng JSON
-                 if(ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'clear_request' }));
-                }
+                sendMessage('clear_request');
             }
         });
 
-        // PWA: Đoạn script để đăng ký Service Worker
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
-                    console.log('ServiceWorker registration successful:', registration.scope);
-                }, err => {
-                    console.log('ServiceWorker registration failed:', err);
-                });
+                navigator.serviceWorker.register('/sw.js');
             });
         }
     </script>

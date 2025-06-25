@@ -8,29 +8,14 @@ const USER_COLORS = [
     '#A0C4FF', '#BDB2FF', '#FFC6FF', '#FFAB91', '#B2DFDB'
 ];
 
-// 1. Khởi tạo ứng dụng express
 const app = express();
-
-// 2. Cấu hình express để phục vụ các file tĩnh (icons, sounds, manifest) từ thư mục 'public'
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/sw.js', (req, res) => res.sendFile(path.join(__dirname, 'sw.js')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-// 3. Cấu hình express để phục vụ file PWA Service Worker
-app.get('/sw.js', (req, res) => {
-    res.sendFile(path.join(__dirname, 'sw.js'));
-});
-
-// 4. Cấu hình express để phục vụ file index.html cho tất cả các request còn lại
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// 5. Tạo server HTTP DUY NHẤT từ ứng dụng express đã được cấu hình
 const server = http.createServer(app);
-
-// 6. Gắn WebSocket server vào HTTP server đó
 const wss = new WebSocket.Server({ server });
 
-// --- Toàn bộ logic WebSocket giữ nguyên, không thay đổi ---
 function broadcast(data) {
     const messageString = JSON.stringify(data);
     wss.clients.forEach(client => {
@@ -41,14 +26,30 @@ function broadcast(data) {
 }
 
 wss.on('connection', ws => {
-    ws.username = `User ${Math.floor(10000 + Math.random() * 90000)}`;
-    ws.color = USER_COLORS[(wss.clients.size - 1) % USER_COLORS.length];
-    broadcast({ type: 'system', content: `${ws.username} has joined the chat.` });
+    console.log('Client connected, waiting for username.');
+    // Ban đầu, chưa gán tên, chỉ chờ client gửi đến
 
     ws.on('message', message => {
         let data;
         try {
             data = JSON.parse(message);
+
+            // THÊM MỚI: Xử lý khi client gửi tên
+            if (data.type === 'set_username') {
+                // Gán tên và màu cho kết nối này
+                ws.username = data.content;
+                ws.color = USER_COLORS[wss.clients.size % USER_COLORS.length];
+                console.log(`${ws.username} has set their name with color ${ws.color}.`);
+                // Thông báo cho mọi người có người mới tham gia
+                broadcast({ type: 'system', content: `${ws.username} has joined the chat.` });
+                return; // Dừng lại sau khi đã đặt tên
+            }
+
+            // Nếu kết nối chưa có tên, không xử lý các tin nhắn khác
+            if (!ws.username) {
+                return;
+            }
+
             switch (data.type) {
                 case 'clear_request':
                     broadcast({ type: 'clear_confirmed' });
@@ -59,15 +60,19 @@ wss.on('connection', ws => {
                     broadcast(data);
                     break;
             }
-        } catch (error) { console.error('Invalid message format'); }
+        } catch (error) { console.error('Invalid message format:', error); }
     });
 
     ws.on('close', () => {
-        broadcast({ type: 'system', content: `${ws.username} has left the chat.` });
+        // Chỉ thông báo nếu người dùng đã đặt tên
+        if (ws.username) {
+            console.log(`${ws.username} disconnected.`);
+            broadcast({ type: 'system', content: `${ws.username} has left the chat.` });
+        } else {
+            console.log('A client disconnected before setting a name.');
+        }
     });
 });
-// --- Kết thúc logic WebSocket ---
 
-// 7. Khởi động server HTTP (Render sẽ cung cấp cổng)
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`Server is listening on port ${PORT}`));
