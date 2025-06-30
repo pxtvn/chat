@@ -1,5 +1,5 @@
-// Cập nhật phiên bản lên v4 để sửa lỗi giao diện
-const CACHE_NAME = 'quick-chat-v4';
+// Cập nhật phiên bản lên v5
+const CACHE_NAME = 'quick-chat-v5';
 
 const urlsToCache = [
   '/',

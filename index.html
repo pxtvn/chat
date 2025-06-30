@@ -61,7 +61,7 @@
         emoji-picker.visible {
             display: block;
         }
-        
+
         #sidebar {
             width: 280px;
             flex-shrink: 0;
@@ -90,7 +90,6 @@
         .modal button { width: 50%; padding: 0.75rem; border-radius: 8px; border: none; background-color: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; }
         .modal .close-btn { position: absolute; top: 10px; right: 15px; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
         
-        /* Media Query cho Mobile */
         @media (max-width: 768px) {
             #sidebar {
                 position: fixed;
@@ -209,6 +208,10 @@
         const emojiBtn = document.getElementById('emoji-btn');
         const emojiPicker = document.querySelector('emoji-picker');
         const pageOverlay = document.getElementById('page-overlay');
+        const notificationSound = document.getElementById('notification-sound');
+        const originalTitle = document.title;
+        
+        let unreadMessages = 0;
         let ws;
 
         // --- Event Listeners ---
@@ -221,6 +224,13 @@
         clearRoomBtn.addEventListener('click', () => { if (confirm('Bạn có chắc muốn xóa lịch sử của phòng chat này không?')) { sendMessage('clear_room_history'); }});
         
         emojiBtn.addEventListener('click', (e) => { e.stopPropagation(); emojiPicker.classList.toggle('visible'); });
+        
+        emojiPicker.addEventListener('emoji-click', event => {
+            const emoji = event.detail.unicode;
+            sendMessage('text', { content: emoji });
+            emojiPicker.classList.remove('visible');
+        });
+
         document.addEventListener('click', (event) => { if (!emojiPicker.contains(event.target) && event.target !== emojiBtn) { emojiPicker.classList.remove('visible'); } });
 
         roomList.addEventListener('click', (e) => {
@@ -233,6 +243,7 @@
                     password = prompt(`Phòng "${roomName}" được bảo vệ. Vui lòng nhập mật khẩu:`);
                     if (password === null) return;
                 }
+                if (window.innerWidth < 768) { hideSidebar(); }
                 sendMessage('join_room', { roomName, password });
             }
         });
@@ -249,16 +260,24 @@
         }
 
         pageOverlay.addEventListener('click', hideSidebar);
-        roomList.addEventListener('click', (e) => { if(e.target.closest('li[data-room-name]')) { hideSidebar(); }});
 
         // --- WebSocket Logic ---
         function initializeWebSocket(username) {
-            // ... (Phần này không thay đổi, tôi dán lại đầy đủ để bạn yên tâm)
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}`);
             ws.onopen = () => sendMessage('set_username', { content: username });
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+
+                if (data.username && document.hidden) {
+                    unreadMessages++;
+                    notificationSound.play().catch(e => {});
+                    document.title = `(${unreadMessages}) ${originalTitle}`;
+                    if ('setAppBadge' in navigator) {
+                        navigator.setAppBadge(unreadMessages);
+                    }
+                }
+
                 switch (data.type) {
                     case 'state_update':
                         updateRoomList(data.rooms);
@@ -285,15 +304,20 @@
         function updateRoomList(rooms) {
             roomList.innerHTML = '';
             if (!rooms || rooms.length === 0) {
-                const item = document.createElement('li'); item.style.cursor = 'default'; item.style.justifyContent = 'center'; item.textContent = 'Chưa có phòng nào.';
+                const item = document.createElement('li');
+                item.style.cursor = 'default';
+                item.style.justifyContent = 'center';
+                item.textContent = 'Chưa có phòng nào.';
                 roomList.appendChild(item);
                 return;
             }
             rooms.forEach(room => {
-                const item = document.createElement('li'); item.dataset.roomName = room.name; item.dataset.isProtected = room.isProtected;
+                const item = document.createElement('li');
+                item.dataset.roomName = room.name;
+                item.dataset.isProtected = room.isProtected;
                 item.innerHTML = `<div><span>${room.name}</span><span class="user-count"> (${room.userCount})</span></div>${room.isProtected ? '<span>🔒</span>' : ''}`;
                 roomList.appendChild(item);
-});
+            });
         }
         
         function updateGlobalUserList(users) {
@@ -303,7 +327,8 @@
                 return;
             }
             users.forEach(user => {
-                const item = document.createElement('li'); item.innerHTML = `<div style="color: ${user.color};">${user.username}</div><div class="user-count">${user.currentRoom}</div>`;
+                const item = document.createElement('li');
+                item.innerHTML = `<div style="color: ${user.color};">${user.username}</div><div class="user-count">${user.currentRoom}</div>`;
                 globalUserList.appendChild(item);
             });
         }
@@ -311,15 +336,28 @@
         function appendMessage(message) {
             const mainEl = document.querySelector('main');
             const item = document.createElement('li');
-            if (message.type === 'system') { item.classList.add('system-message'); item.textContent = message.content; } 
-            else { item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`; }
+            if (message.type === 'system') {
+                item.classList.add('system-message');
+                item.textContent = message.content;
+            } else {
+                item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
+            }
             messages.appendChild(item);
             mainEl.scrollTop = mainEl.scrollHeight;
         }
 
-        // --- PWA Logic ---
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                unreadMessages = 0;
+                document.title = originalTitle;
+                if ('clearAppBadge' in navigator) navigator.clearAppBadge();
+            }
+        });
+        
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); });
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js');
+            });
         }
     </script>
 </body>
