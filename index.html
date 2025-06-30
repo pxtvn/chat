@@ -45,12 +45,24 @@
         .system-message { color: var(--secondary-text-color); font-style: italic; background: none !important; text-align: center; border: none !important; }
         .message-sender { font-weight: bold; margin-right: 8px; }
 
-        #form-container { background-color: var(--surface-color); padding: 0.5rem; border-top: 1px solid var(--border-color); }
-        #form { display: none; height: 3rem; }
+        #form-container { background-color: var(--surface-color); padding: 0.5rem; border-top: 1px solid var(--border-color); position: relative; }
+        #form { display: none; height: 3rem; align-items: center; }
         #input { background-color: #333; color: var(--primary-text-color); border: 1px solid var(--border-color); padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin-right: 0.5rem; }
         #form button { background: var(--accent-color); border: none; padding: 0 1rem; margin: 0 0.25rem; border-radius: 2rem; color: #fff; cursor: pointer; }
         #clear-room-btn { background-color: var(--danger-color); }
+        #emoji-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: 0 8px; color: var(--secondary-text-color); }
         
+        emoji-picker {
+            position: absolute;
+            bottom: calc(100% + 5px);
+            right: 0;
+            z-index: 100;
+            display: none;
+        }
+        emoji-picker.visible {
+            display: block;
+        }
+
         #sidebar {
             width: 280px;
             height: 100%;
@@ -64,10 +76,7 @@
             transition: right 0.3s ease-in-out;
             z-index: 100;
         }
-        #app-container.sidebar-visible #sidebar {
-            right: 0;
-        }
-        
+        #app-container.sidebar-visible #sidebar { right: 0; }
         .sidebar-section { padding: 1rem; border-bottom: 1px solid var(--border-color); overflow-y: auto; }
         .sidebar-section:last-child { border-bottom: none; }
         .sidebar-header { font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem; }
@@ -92,7 +101,6 @@
             cursor: pointer;
             display: none;
         }
-
         #welcome-overlay, #create-room-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
         #create-room-overlay { display: none; }
         .modal { background-color: var(--surface-color); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-color); position: relative; }
@@ -137,9 +145,11 @@
             <div id="form-container">
                 <form id="form">
                     <input id="input" autocomplete="off" placeholder="Nhập tin nhắn..." />
+                    <button id="emoji-btn" type="button">😀</button>
                     <button type="submit">Gửi</button>
                     <button id="clear-room-btn" type="button">Xóa LS</button>
                 </form>
+                <emoji-picker></emoji-picker>
             </div>
         </div>
         <aside id="sidebar">
@@ -156,12 +166,11 @@
     </div>
     
     <button id="toggle-user-list-btn">≡</button>
-
     <audio id="notification-sound" src="/sounds/notification.mp3" preload="auto"></audio>
 
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script>
-        // Toàn bộ JavaScript không thay đổi so với phiên bản trước
-        // Chỉ cần đảm bảo các ID trong HTML ở trên là đầy đủ để các dòng getElementById dưới đây hoạt động
+        // DOM Elements
         const welcomeOverlay = document.getElementById('welcome-overlay');
         const nameForm = document.getElementById('name-form');
         const nameInput = document.getElementById('name-input');
@@ -178,38 +187,26 @@
         const globalUserList = document.getElementById('global-user-list');
         const sidebar = document.getElementById('sidebar');
         const toggleBtn = document.getElementById('toggle-user-list-btn');
-
+        const emojiBtn = document.getElementById('emoji-btn');
+        const emojiPicker = document.querySelector('emoji-picker');
+        const notificationSound = document.getElementById('notification-sound');
+        const originalTitle = document.title;
+        
+        let unreadMessages = 0;
         let ws;
 
-        nameForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const username = nameInput.value.trim();
-            if (username) {
-                welcomeOverlay.style.display = 'none';
-                appContainer.style.display = 'flex';
-                if (window.innerWidth < 768) {
-                    toggleBtn.style.display = 'block';
-                }
-                initializeWebSocket(username);
-            }
-        });
-
-        toggleBtn.addEventListener('click', () => {
-            appContainer.classList.toggle('sidebar-visible');
-        });
-
-        document.getElementById('chat-wrapper').addEventListener('click', () => {
-            if (window.innerWidth < 768) {
-                appContainer.classList.remove('sidebar-visible');
-            }
-        });
-        
+        // --- Event Listeners ---
+        nameForm.addEventListener('submit', (e) => { e.preventDefault(); if (nameInput.value.trim()) { welcomeOverlay.style.display = 'none'; appContainer.style.display = 'flex'; initializeWebSocket(nameInput.value.trim()); }});
         createRoomBtn.addEventListener('click', () => { createRoomOverlay.style.display = 'flex'; });
         closeCreateRoomBtn.addEventListener('click', () => { createRoomOverlay.style.display = 'none'; });
         
         createRoomForm.addEventListener('submit', (e) => { e.preventDefault(); const roomName = document.getElementById('room-name-input').value.trim(); const password = document.getElementById('room-password-input').value; if (roomName) { sendMessage('create_room', { roomName, password }); createRoomOverlay.style.display = 'none'; createRoomForm.reset(); }});
         form.addEventListener('submit', (e) => { e.preventDefault(); if (input.value.trim()) { sendMessage('text', { content: input.value.trim() }); input.value = ''; }});
         clearRoomBtn.addEventListener('click', () => { if (confirm('Bạn có chắc muốn xóa lịch sử của phòng chat này không?')) { sendMessage('clear_room_history'); }});
+        
+        emojiBtn.addEventListener('click', () => { emojiPicker.classList.toggle('visible'); });
+        emojiPicker.addEventListener('emoji-click', event => { input.value += event.detail.unicode; });
+        document.addEventListener('click', (event) => { if (!emojiPicker.contains(event.target) && event.target !== emojiBtn) { emojiPicker.classList.remove('visible'); } });
 
         roomList.addEventListener('click', (e) => {
             const roomItem = e.target.closest('li[data-room-name]');
@@ -224,13 +221,27 @@
                 sendMessage('join_room', { roomName, password });
             }
         });
-
+        
+        toggleBtn.addEventListener('click', () => { appContainer.classList.toggle('sidebar-visible'); });
+        document.getElementById('chat-wrapper').addEventListener('click', () => { if (window.innerWidth < 768) { appContainer.classList.remove('sidebar-visible'); } });
+        
+        // --- WebSocket Logic ---
         function initializeWebSocket(username) {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}`);
             ws.onopen = () => sendMessage('set_username', { content: username });
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+
+                if (data.username && document.hidden) {
+                    unreadMessages++;
+                    notificationSound.play().catch(e => console.error("Không thể phát âm thanh:", e));
+                    document.title = `(${unreadMessages}) ${originalTitle}`;
+                    if ('setAppBadge' in navigator) {
+                        navigator.setAppBadge(unreadMessages);
+                    }
+                }
+
                 switch (data.type) {
                     case 'state_update':
                         updateRoomList(data.rooms);
@@ -240,10 +251,7 @@
                         messages.innerHTML = `<li class="system-message">Bạn đã vào phòng "${data.roomName}".</li>`;
                         form.style.display = 'flex';
                         break;
-                    case 'text':
-                    case 'system':
-                        appendMessage(data);
-                        break;
+                    case 'text': case 'system': appendMessage(data); break;
                     case 'clear_confirmed':
                         messages.innerHTML = '';
                         appendMessage({type: 'system', content: 'Lịch sử phòng đã được xóa.'});
@@ -302,8 +310,18 @@
             mainEl.scrollTop = mainEl.scrollHeight;
         }
 
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                unreadMessages = 0;
+                document.title = originalTitle;
+                if ('clearAppBadge' in navigator) navigator.clearAppBadge();
+            }
+        });
+        
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); });
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js');
+            });
         }
     </script>
 </body>
