@@ -1,5 +1,5 @@
-// Cập nhật phiên bản lên v3
-const CACHE_NAME = 'quick-chat-v3';
+// Cập nhật phiên bản lên v4 để sửa lỗi giao diện
+const CACHE_NAME = 'quick-chat-v4';
 
 const urlsToCache = [
   '/',
@@ -12,16 +12,21 @@ const urlsToCache = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+      .then(cache => {
+        console.log('Service Worker: Caching app shell');
+        return cache.addAll(urlsToCache);
+      })
   );
 });
 
 self.addEventListener('activate', event => {
+  console.log('Service Worker: Activating...');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheName !== CACHE_NAME) {
+            console.log('Service Worker: Clearing old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -34,6 +39,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
-      .then(response => response || fetch(event.request))
+      .then(response => {
+        return response || fetch(event.request);
+      })
   );
 });
