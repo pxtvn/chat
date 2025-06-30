@@ -1,5 +1,5 @@
-// Cập nhật phiên bản lên v5
-const CACHE_NAME = 'quick-chat-v5';
+// Cập nhật phiên bản lên v6 để áp dụng bản sửa lỗi cache
+const CACHE_NAME = 'quick-chat-v6';
 
 const urlsToCache = [
   '/',
