@@ -1,5 +1,5 @@
-// Cập nhật phiên bản lên v11
-const CACHE_NAME = 'quick-chat-v11';
+// Cập nhật phiên bản lên v12 cho tính năng lưu lịch sử chat
+const CACHE_NAME = 'quick-chat-v12';
 
 const urlsToCache = [
   '/',

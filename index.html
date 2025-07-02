@@ -44,6 +44,20 @@
         .system-message { color: var(--secondary-text-color); font-style: italic; background: none !important; text-align: center; border: none !important; }
         .message-sender { font-weight: bold; margin-right: 8px; }
 
+        .message-container { 
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .seen-status {
+            font-size: 0.75rem;
+            color: var(--secondary-text-color);
+            margin-top: 4px;
+            margin-left: 10px;
+            height: 14px;
+            opacity: 0.7;
+        }
+
         #form-container { background-color: var(--surface-color); padding: 0.5rem; border-top: 1px solid var(--border-color); position: relative; }
         #form { 
             display: none; 
@@ -67,7 +81,7 @@
             cursor: pointer;
         }
         #clear-room-btn { background-color: var(--danger-color); }
-        #emoji-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: 0 8px; color: var(--secondary-text-color); height: 42px; }
+        #emoji-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: 0 8px; color: var(--secondary-text-color); height: 42px;}
         
         emoji-picker {
             position: absolute;
@@ -89,13 +103,17 @@
             flex-direction: column;
         }
         .sidebar-section { padding: 1rem; border-bottom: 1px solid var(--border-color); overflow-y: auto; flex-shrink: 1; flex-grow: 1; }
-        .sidebar-section:first-child { flex-grow: 0; }
-        #create-room-btn { flex-shrink: 0; }
+        .sidebar-section:first-child { flex-grow: 0; flex-shrink: 0; }
+        .sidebar-section:nth-child(2) { flex-grow: 0; flex-shrink: 0; }
         .sidebar-header { font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem; }
         #dm-list, #room-list, #global-user-list { list-style: none; padding: 0; margin: 0; }
         #dm-list li, #room-list li, #global-user-list li { padding: 0.75rem; margin-bottom: 0.5rem; background: #333; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
         #dm-list li:hover, #room-list li:hover, #global-user-list li:hover { background: #444; }
-        #create-room-btn { display: block; width: calc(100% - 2rem); margin: 1rem auto; padding: 0.75rem; font-size: 1rem; background: var(--accent-color); color: white; border: none; border-radius: 8px; cursor: pointer; }
+        #create-room-btn { display: block; width: calc(100% - 2rem); margin: 1rem auto 0; padding: 0.75rem; font-size: 1rem; background: var(--accent-color); color: white; border: none; border-radius: 8px; cursor: pointer; }
+
+        @media (max-width: 768px) {
+            #sidebar { display: none; }
+        }
 
         #welcome-overlay, #create-room-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
         #create-room-overlay { display: none; }
@@ -179,12 +197,11 @@
         const globalUserList = document.getElementById('global-user-list');
         const emojiBtn = document.getElementById('emoji-btn');
         const emojiPicker = document.querySelector('emoji-picker');
-        const notificationSound = document.getElementById('notification-sound');
-        const originalTitle = document.title;
         
-        let unreadMessages = 0;
         let ws;
         let myUsername = '';
+        let seenObserver;
+        const sentMessages = new Set();
 
         nameForm.addEventListener('submit', (e) => { e.preventDefault(); const username = nameInput.value.trim(); if (username) { myUsername = username; welcomeOverlay.style.display = 'none'; appContainer.style.display = 'flex'; initializeWebSocket(username); }});
         createRoomBtn.addEventListener('click', () => { createRoomOverlay.style.display = 'flex'; });
@@ -216,7 +233,7 @@
         emojiBtn.addEventListener('click', (e) => { e.stopPropagation(); emojiPicker.classList.toggle('visible'); });
         emojiPicker.addEventListener('emoji-click', event => { sendMessage('text', { content: event.detail.unicode }); emojiPicker.classList.remove('visible'); });
         document.addEventListener('click', (event) => { if (!emojiPicker.contains(event.target) && event.target !== emojiBtn) { emojiPicker.classList.remove('visible'); } });
-
+        
         globalUserList.addEventListener('click', (e) => {
             const userItem = e.target.closest('li[data-username]');
             if (userItem) {
@@ -256,18 +273,25 @@
                         updateGlobalUserList(data.users);
                         break;
                     case 'join_success':
-                        messages.innerHTML = `<li class="system-message">Bạn đã vào phòng "${data.roomName.replace('-dm-', ' & ')}".</li>`;
+                        messages.innerHTML = '';
                         form.style.display = 'flex';
                         document.title = `${data.roomName.replace('-dm-', ' & ')} - Quick Chat`;
+                        appendMessage({ type: 'system', content: `Bạn đã vào phòng "${data.roomName.replace('-dm-', ' & ')}".` });
+                        break;
+                    case 'room_history':
+                        messages.innerHTML = '';
+                        data.history.forEach(msg => appendMessage(msg));
                         break;
                     case 'dm_invite':
                         addDmToList(data.roomName, data.fromUser);
-                        // Optional: show a small non-blocking notification
-                        appendMessage({ type: 'system', content: `Bạn có tin nhắn mới từ ${data.fromUser}.` });
+                        appendMessage({ type: 'system', content: `Bạn có tin nhắn mới từ ${data.fromUser}. Nhấp vào cuộc trò chuyện ở sidebar để xem.` });
                         break;
                     case 'text':
                     case 'system':
                         appendMessage(data);
+                        break;
+                    case 'seen_by_user':
+                        updateSeenStatus(data.messageId, data.username);
                         break;
                     case 'clear_confirmed':
                         messages.innerHTML = '';
@@ -280,14 +304,24 @@
             };
         }
 
-        function sendMessage(type, payload = {}) { if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({ type, ...payload })); } }
+        function sendMessage(type, payload = {}) {
+            if (type === 'text') {
+                const tempId = `temp_${Date.now()}`;
+                payload.tempId = tempId;
+                sentMessages.add(tempId);
+            }
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type, ...payload }));
+            }
+        }
         
         function updateRoomList(rooms) {
             roomList.innerHTML = '';
-            if (!rooms || rooms.length === 0) { roomList.innerHTML = '<li>Chưa có phòng nào.</li>'; return; }
+            if (!rooms || rooms.length === 0) { roomList.innerHTML = '<li style="cursor:default;justify-content:center;">Chưa có phòng nào.</li>'; return; }
             rooms.forEach(room => {
                 const item = document.createElement('li');
-                item.dataset.roomName = room.name; item.dataset.isProtected = room.isProtected;
+                item.dataset.roomName = room.name;
+                item.dataset.isProtected = room.isProtected;
                 item.innerHTML = `<div><span>${room.name}</span><span class="user-count"> (${room.userCount})</span></div>${room.isProtected ? '<span>🔒</span>' : ''}`;
                 roomList.appendChild(item);
             });
@@ -301,20 +335,19 @@
                 item.dataset.username = user.username;
                 if (user.username === myUsername) {
                     item.style.cursor = 'default';
-                    item.innerHTML = `<div style="color: ${user.color}; font-weight: bold;">${user.username} (Bạn)</div><div class="user-count">${user.currentRoom.replace('-dm-', ' & ')}</div>`;
+                    item.innerHTML = `<div style="color: ${user.color}; font-weight: bold;">${user.username} (Bạn)</div><div class="user-count">${user.currentRoom.replace('-dm-',' & ')}</div>`;
                 } else {
-                    item.innerHTML = `<div style="color: ${user.color};">${user.username}</div><div class="user-count">${user.currentRoom.replace('-dm-', ' & ')}</div>`;
+                    item.innerHTML = `<div style="color: ${user.color};">${user.username}</div><div class="user-count">${user.currentRoom.replace('-dm-',' & ')}</div>`;
                 }
                 globalUserList.appendChild(item);
             });
         }
-
+        
         function addDmToList(roomName, withUser) {
             if (document.querySelector(`#dm-list li[data-room-name="${roomName}"]`)) return;
             const item = document.createElement('li');
             item.dataset.roomName = roomName;
             item.innerHTML = `<span>💬 ${withUser}</span>`;
-            // Xóa thông báo "chưa có tin nhắn nào" nếu có
             const placeholder = dmList.querySelector('.no-dm-placeholder');
             if (placeholder) placeholder.remove();
             dmList.appendChild(item);
@@ -324,15 +357,51 @@
             const mainEl = document.querySelector('main');
             const item = document.createElement('li');
             if (message.type === 'system') {
-                item.classList.add('system-message'); item.textContent = message.content;
+                item.classList.add('system-message');
+                item.textContent = message.content;
             } else {
-                item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
+                item.id = `msg-${message.id}`;
+                item.innerHTML = `<div class="message-container"><div><span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}</div><div class="seen-status"></div></div>`;
+                if (message.username !== myUsername && seenObserver) {
+                    seenObserver.observe(item);
+                }
             }
             messages.appendChild(item);
             mainEl.scrollTop = mainEl.scrollHeight;
         }
 
-        if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); }); }
+        function setupSeenObserver() {
+            if (seenObserver) seenObserver.disconnect();
+            seenObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const messageElement = entry.target;
+                        const messageId = messageElement.id.replace('msg-', '');
+                        sendMessage('message_seen', { messageId });
+                        seenObserver.unobserve(messageElement);
+                    }
+                });
+            }, { threshold: 0.8 });
+        }
+
+        function updateSeenStatus(messageId, username) {
+            if (username === myUsername) return; 
+            const messageElement = document.getElementById(`msg-${messageId}`);
+            if (messageElement) {
+                const statusDiv = messageElement.querySelector('.seen-status');
+                if (statusDiv) {
+                    const currentStatus = statusDiv.textContent;
+                    if (!currentStatus.includes(username)) {
+                         const prefix = currentStatus ? ', ' : 'Đã xem bởi ';
+                         statusDiv.textContent += `${prefix}${username}`;
+                    }
+                }
+            }
+        }
+        
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); });
+        }
     </script>
 </body>
 </html>

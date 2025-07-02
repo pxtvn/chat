@@ -13,7 +13,6 @@ const usersByName = new Map();
 const USER_COLORS = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF'];
 
 app.use(express.static(path.join(__dirname, 'public')));
-
 app.get('/sw.js', (req, res) => {
   res.set({
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -22,7 +21,6 @@ app.get('/sw.js', (req, res) => {
   });
   res.sendFile(path.join(__dirname, 'sw.js'));
 });
-
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -68,7 +66,6 @@ function broadcastStateUpdate() {
 
 wss.on('connection', ws => {
     console.log('Client connected.');
-
     ws.on('message', message => {
         try {
             const data = JSON.parse(message);
@@ -85,7 +82,7 @@ wss.on('connection', ws => {
                         ws.send(JSON.stringify({ type: 'error', message: 'Tên phòng đã tồn tại.' }));
                         return;
                     }
-                    rooms[data.roomName] = { clients: new Set(), password: data.password || null, isDM: false, deleteTimeout: null };
+                    rooms[data.roomName] = { clients: new Set(), password: data.password || null, isDM: false, history: [], deleteTimeout: null };
                     console.log(`Room "${data.roomName}" created.`);
                     joinRoom(ws, data.roomName);
                     break;
@@ -97,7 +94,7 @@ wss.on('connection', ws => {
                     }
                     const dmRoomName = [ws.username, data.targetUsername].sort().join('-dm-');
                     if (!rooms[dmRoomName]) {
-                        rooms[dmRoomName] = { clients: new Set(), password: null, isDM: true, deleteTimeout: null };
+                        rooms[dmRoomName] = { clients: new Set(), password: null, isDM: true, history: [], deleteTimeout: null };
                     }
                     joinRoom(ws, dmRoomName);
                     targetUser.send(JSON.stringify({ type: 'dm_invite', roomName: dmRoomName, fromUser: ws.username }));
@@ -117,11 +114,14 @@ wss.on('connection', ws => {
                 case 'text':
                     if (ws.currentRoom) {
                         const messageId = uuidv4();
-                        broadcastToRoom(ws.currentRoom, { type: 'text', id: messageId, username: ws.username, color: ws.color, content: data.content, tempId: data.tempId });
+                        const messageData = { type: 'text', id: messageId, username: ws.username, color: ws.color, content: data.content, tempId: data.tempId };
+                        rooms[ws.currentRoom].history.push(messageData);
+                        broadcastToRoom(ws.currentRoom, messageData);
                     }
                     break;
                 case 'clear_room_history':
-                    if(ws.currentRoom) {
+                    if(ws.currentRoom && rooms[ws.currentRoom]) {
+                        rooms[ws.currentRoom].history = [];
                         broadcastToRoom(ws.currentRoom, {type: 'clear_confirmed'});
                     }
                     break;
@@ -133,7 +133,6 @@ wss.on('connection', ws => {
             }
         } catch (error) { console.error("Lỗi xử lý tin nhắn:", error); }
     });
-
     ws.on('close', () => {
         if (ws.username) {
             const userThatLeft = ws.username;
@@ -150,6 +149,7 @@ function leaveCurrentRoom(ws) {
     if (roomName && rooms[roomName]) {
         const room = rooms[roomName];
         room.clients.delete(ws);
+        ws.currentRoom = null;
         broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã rời phòng.` });
         if (room.clients.size === 0 && !room.isDM) {
             room.deleteTimeout = setTimeout(() => {
@@ -161,7 +161,6 @@ function leaveCurrentRoom(ws) {
             }, 180000);
         }
     }
-    ws.currentRoom = null;
 }
 
 function joinRoom(ws, roomName) {
@@ -173,6 +172,8 @@ function joinRoom(ws, roomName) {
     }
     room.clients.add(ws);
     ws.currentRoom = roomName;
+
+    ws.send(JSON.stringify({ type: 'room_history', history: room.history }));
     broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã vào phòng.` });
     ws.send(JSON.stringify({ type: 'join_success', roomName: roomName, isDM: room.isDM }));
     broadcastStateUpdate();
