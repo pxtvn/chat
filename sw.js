@@ -1,5 +1,5 @@
-// Cập nhật phiên bản lên v7 cho tính năng "đã xem"
-const CACHE_NAME = 'quick-chat-v7';
+// Cập nhật phiên bản lên v8 để sửa lỗi tính năng "đã xem"
+const CACHE_NAME = 'quick-chat-v8';
 
 const urlsToCache = [
   '/',
