@@ -2,18 +2,17 @@ const http = require('http');
 const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const USER_COLORS = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF'];
 const rooms = {};
+const USER_COLORS = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF'];
 
-// Phục vụ các file tĩnh từ thư mục 'public'
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Khi có yêu cầu đến file sw.js, gửi file đi kèm với các header cấm cache
 app.get('/sw.js', (req, res) => {
   res.set({
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -23,12 +22,10 @@ app.get('/sw.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'sw.js'));
 });
 
-// Phục vụ file index.html cho trang chính
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// --- Logic WebSocket đầy đủ ---
 function broadcastToAll(data) {
     const messageString = JSON.stringify(data);
     wss.clients.forEach(client => {
@@ -51,7 +48,6 @@ function broadcastStateUpdate() {
         isProtected: !!rooms[roomName].password,
         userCount: rooms[roomName].clients.size
     }));
-
     const globalUserList = [];
     wss.clients.forEach(client => {
         if (client.username) {
@@ -62,13 +58,11 @@ function broadcastStateUpdate() {
             });
         }
     });
-    
     broadcastToAll({ type: 'state_update', rooms: roomList, users: globalUserList });
 }
 
 wss.on('connection', ws => {
     console.log('Client connected.');
-
     ws.on('message', message => {
         try {
             const data = JSON.parse(message);
@@ -79,7 +73,6 @@ wss.on('connection', ws => {
                     console.log(`${ws.username} set their name.`);
                     broadcastStateUpdate();
                     break;
-                
                 case 'create_room':
                     if (rooms[data.roomName]) {
                         ws.send(JSON.stringify({ type: 'error', message: 'Tên phòng đã tồn tại.' }));
@@ -89,7 +82,6 @@ wss.on('connection', ws => {
                     console.log(`Room "${data.roomName}" created.`);
                     joinRoom(ws, data.roomName);
                     break;
-
                 case 'join_room':
                     const roomToJoin = rooms[data.roomName];
                     if (!roomToJoin) {
@@ -102,16 +94,31 @@ wss.on('connection', ws => {
                     }
                     joinRoom(ws, data.roomName);
                     break;
-
                 case 'text':
                     if (ws.currentRoom) {
-                        broadcastToRoom(ws.currentRoom, { type: 'text', username: ws.username, color: ws.color, content: data.content });
+                        const messageId = uuidv4();
+                        broadcastToRoom(ws.currentRoom, {
+                            type: 'text',
+                            id: messageId,
+                            username: ws.username,
+                            color: ws.color,
+                            content: data.content,
+                            tempId: data.tempId
+                        });
                     }
                     break;
-                
                 case 'clear_room_history':
                     if(ws.currentRoom) {
                         broadcastToRoom(ws.currentRoom, {type: 'clear_confirmed'});
+                    }
+                    break;
+                case 'message_seen':
+                    if (ws.currentRoom && data.messageId) {
+                        broadcastToRoom(ws.currentRoom, {
+                            type: 'seen_by_user',
+                            messageId: data.messageId,
+                            username: ws.username
+                        });
                     }
                     break;
             }
@@ -119,7 +126,6 @@ wss.on('connection', ws => {
             console.error("Failed to parse message or process data:", error);
         }
     });
-
     ws.on('close', () => {
         if (ws.username) {
             console.log(`${ws.username} disconnected.`);
@@ -134,9 +140,7 @@ function leaveCurrentRoom(ws) {
         const room = rooms[roomName];
         room.clients.delete(ws);
         ws.currentRoom = null;
-        
         broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã rời phòng.` });
-        
         if (room.clients.size === 0) {
             console.log(`Room "${roomName}" is empty. Scheduling deletion in 3 minutes.`);
             room.deleteTimeout = setTimeout(() => {
@@ -154,16 +158,13 @@ function leaveCurrentRoom(ws) {
 function joinRoom(ws, roomName) {
     leaveCurrentRoom(ws);
     const room = rooms[roomName];
-    
     if (room.deleteTimeout) {
         clearTimeout(room.deleteTimeout);
         room.deleteTimeout = null;
         console.log(`Deletion for room "${roomName}" cancelled.`);
     }
-
     room.clients.add(ws);
     ws.currentRoom = roomName;
-    
     broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã vào phòng.` });
     ws.send(JSON.stringify({ type: 'join_success', roomName: roomName }));
     broadcastStateUpdate();
