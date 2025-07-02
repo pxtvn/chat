@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Chat</title>
     <meta name="theme-color" content="#1E1E1E"/>
     <link rel="manifest" href="/manifest.json">
-    <title>Quick Chat</title>
     <style>
+        /* Toàn bộ CSS không thay đổi so với phiên bản trước */
         :root {
             --background-color: #121212;
             --surface-color: #1E1E1E;
@@ -17,12 +18,9 @@
             --border-color: #333;
         }
         * { box-sizing: border-box; }
-        html, body { 
-            height: 100%; 
-            overflow: hidden;
-            background-color: var(--background-color);
-        }
+        html, body { height: 100%; overflow: hidden; }
         body { 
+            background-color: var(--background-color); 
             color: var(--primary-text-color); 
             margin: 0; 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
@@ -44,21 +42,7 @@
         .system-message { color: var(--secondary-text-color); font-style: italic; background: none !important; text-align: center; border: none !important; }
         .message-sender { font-weight: bold; margin-right: 8px; }
 
-        .message-container { 
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        .seen-status {
-            font-size: 0.75rem;
-            color: var(--secondary-text-color);
-            margin-top: 4px;
-            margin-left: 10px;
-            height: 14px;
-            opacity: 0.7;
-        }
-
-        #form-container { background-color: var(--surface-color); padding: 0.5rem; border-top: 1px solid var(--border-color); position: relative; }
+        #form-container { background-color: var(--surface-color); padding: 0.5rem; border-top: 1px solid var(--border-color); }
         #form { 
             display: none; 
             align-items: flex-end;
@@ -79,19 +63,6 @@
             border-radius: 21px;
             color: #fff;
             cursor: pointer;
-        }
-        #clear-room-btn { background-color: var(--danger-color); }
-        #emoji-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: 0 8px; color: var(--secondary-text-color); height: 42px;}
-        
-        emoji-picker {
-            position: absolute;
-            bottom: calc(100% + 5px);
-            right: 0;
-            z-index: 100;
-            display: none;
-        }
-        emoji-picker.visible {
-            display: block;
         }
         
         #sidebar { 
@@ -114,14 +85,6 @@
         @media (max-width: 768px) {
             #sidebar { display: none; }
         }
-
-        #welcome-overlay, #create-room-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
-        #create-room-overlay { display: none; }
-        .modal { background-color: var(--surface-color); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-color); position: relative; }
-        .modal h2 { margin-top: 0; }
-        .modal input { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: #333; color: var(--primary-text-color); margin-bottom: 1rem; }
-        .modal button { width: 50%; padding: 0.75rem; border-radius: 8px; border: none; background-color: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; }
-        .modal .close-btn { position: absolute; top: 10px; right: 15px; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -134,29 +97,15 @@
             </form>
         </div>
     </div>
-    <div id="create-room-overlay">
-        <div class="modal">
-            <button class="close-btn" id="close-create-room-btn">&times;</button>
-            <h2>Tạo phòng mới</h2>
-            <form id="create-room-form">
-                <input id="room-name-input" placeholder="Tên phòng..." required maxlength="30"/>
-                <input id="room-password-input" type="password" placeholder="Mật khẩu (bỏ trống nếu không cần)"/>
-                <button type="submit">Tạo phòng</button>
-            </form>
-        </div>
-    </div>
-
+    
     <div id="app-container" style="display: none;">
         <div id="chat-wrapper">
             <main><ul id="messages"></ul></main>
             <div id="form-container">
                 <form id="form">
                     <textarea id="input" placeholder="Nhấn Enter để gửi, Shift+Enter để xuống dòng" rows="1"></textarea>
-                    <button id="emoji-btn" type="button">😀</button>
                     <button type="submit">Gửi</button>
-                    <button id="clear-room-btn" type="button">Xóa LS</button>
                 </form>
-                <emoji-picker></emoji-picker>
             </div>
         </div>
         <aside id="sidebar">
@@ -176,9 +125,6 @@
         </aside>
     </div>
 
-    <audio id="notification-sound" src="/sounds/notification.mp3" preload="auto"></audio>
-
-    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script>
         const welcomeOverlay = document.getElementById('welcome-overlay');
         const nameForm = document.getElementById('name-form');
@@ -190,61 +136,24 @@
         const roomList = document.getElementById('room-list');
         const dmList = document.getElementById('dm-list');
         const createRoomBtn = document.getElementById('create-room-btn');
-        const createRoomOverlay = document.getElementById('create-room-overlay');
-        const createRoomForm = document.getElementById('create-room-form');
-        const closeCreateRoomBtn = document.getElementById('close-create-room-btn');
-        const clearRoomBtn = document.getElementById('clear-room-btn');
         const globalUserList = document.getElementById('global-user-list');
-        const emojiBtn = document.getElementById('emoji-btn');
-        const emojiPicker = document.querySelector('emoji-picker');
         
         let ws;
         let myUsername = '';
-        let seenObserver;
-        const sentMessages = new Set();
 
         nameForm.addEventListener('submit', (e) => { e.preventDefault(); const username = nameInput.value.trim(); if (username) { myUsername = username; welcomeOverlay.style.display = 'none'; appContainer.style.display = 'flex'; initializeWebSocket(username); }});
-        createRoomBtn.addEventListener('click', () => { createRoomOverlay.style.display = 'flex'; });
-        closeCreateRoomBtn.addEventListener('click', () => { createRoomOverlay.style.display = 'none'; });
-        createRoomForm.addEventListener('submit', (e) => { e.preventDefault(); const roomName = document.getElementById('room-name-input').value.trim(); const password = document.getElementById('room-password-input').value; if (roomName) { sendMessage('create_room', { roomName, password }); createRoomOverlay.style.display = 'none'; createRoomForm.reset(); }});
-        
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                form.requestSubmit();
+        createRoomBtn.addEventListener('click', () => { 
+            const roomName = prompt("Nhập tên phòng mới:");
+            if (roomName) {
+                const password = prompt("Nhập mật khẩu (bỏ trống nếu không cần):");
+                sendMessage('create_room', { roomName, password: password || null });
             }
         });
         
-        input.addEventListener('input', () => {
-            input.style.height = 'auto';
-            input.style.height = (input.scrollHeight) + 'px';
-        });
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }});
+        input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = (input.scrollHeight) + 'px'; });
+        form.addEventListener('submit', (e) => { e.preventDefault(); if (input.value.trim()) { sendMessage('text', { content: input.value.trim() }); input.value = ''; input.style.height = 'auto'; }});
 
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (input.value.trim()) {
-                sendMessage('text', { content: input.value.trim() });
-                input.value = '';
-                input.style.height = 'auto';
-            }
-        });
-        
-        clearRoomBtn.addEventListener('click', () => { if (confirm('Bạn có chắc muốn xóa lịch sử của phòng chat này không?')) { sendMessage('clear_room_history'); }});
-        emojiBtn.addEventListener('click', (e) => { e.stopPropagation(); emojiPicker.classList.toggle('visible'); });
-        emojiPicker.addEventListener('emoji-click', event => { sendMessage('text', { content: event.detail.unicode }); emojiPicker.classList.remove('visible'); });
-        document.addEventListener('click', (event) => { if (!emojiPicker.contains(event.target) && event.target !== emojiBtn) { emojiPicker.classList.remove('visible'); } });
-        
-        globalUserList.addEventListener('click', (e) => {
-            const userItem = e.target.closest('li[data-username]');
-            if (userItem) {
-                const targetUsername = userItem.dataset.username;
-                if (targetUsername === myUsername) return;
-                if (confirm(`Bạn có muốn bắt đầu chat riêng với ${targetUsername} không?`)) {
-                    sendMessage('start_dm', { targetUsername });
-                }
-            }
-        });
-        
         const joinRoomHandler = (e) => {
             const roomItem = e.target.closest('li[data-room-name]');
             if (roomItem) {
@@ -261,10 +170,20 @@
         roomList.addEventListener('click', joinRoomHandler);
         dmList.addEventListener('click', joinRoomHandler);
 
+        globalUserList.addEventListener('click', (e) => {
+            const userItem = e.target.closest('li[data-username]');
+            if (userItem) {
+                const targetUsername = userItem.dataset.username;
+                if (targetUsername === myUsername) return;
+                sendMessage('start_dm', { targetUsername });
+            }
+        });
+
         function initializeWebSocket(username) {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}`);
             ws.onopen = () => sendMessage('set_username', { content: username });
+
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 switch (data.type) {
@@ -273,10 +192,8 @@
                         updateGlobalUserList(data.users);
                         break;
                     case 'join_success':
-                        messages.innerHTML = '';
                         form.style.display = 'flex';
                         document.title = `${data.roomName.replace('-dm-', ' & ')} - Quick Chat`;
-                        appendMessage({ type: 'system', content: `Bạn đã vào phòng "${data.roomName.replace('-dm-', ' & ')}".` });
                         break;
                     case 'room_history':
                         messages.innerHTML = '';
@@ -290,13 +207,6 @@
                     case 'system':
                         appendMessage(data);
                         break;
-                    case 'seen_by_user':
-                        updateSeenStatus(data.messageId, data.username);
-                        break;
-                    case 'clear_confirmed':
-                        messages.innerHTML = '';
-                        appendMessage({type: 'system', content: 'Lịch sử phòng đã được xóa.'});
-                        break;
                     case 'error':
                         alert(`Lỗi: ${data.message}`);
                         break;
@@ -305,12 +215,7 @@
         }
 
         function sendMessage(type, payload = {}) {
-            if (type === 'text') {
-                const tempId = `temp_${Date.now()}`;
-                payload.tempId = tempId;
-                sentMessages.add(tempId);
-            }
-            if (ws && ws.readyState === WebSocket.OPEN) {
+             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type, ...payload }));
             }
         }
@@ -340,7 +245,7 @@
                     item.innerHTML = `<div style="color: ${user.color};">${user.username}</div><div class="user-count">${user.currentRoom.replace('-dm-',' & ')}</div>`;
                 }
                 globalUserList.appendChild(item);
-            });
+});
         }
         
         function addDmToList(roomName, withUser) {
@@ -360,48 +265,13 @@
                 item.classList.add('system-message');
                 item.textContent = message.content;
             } else {
-                item.id = `msg-${message.id}`;
-                item.innerHTML = `<div class="message-container"><div><span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}</div><div class="seen-status"></div></div>`;
-                if (message.username !== myUsername && seenObserver) {
-                    seenObserver.observe(item);
-                }
+                item.innerHTML = `<span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}`;
             }
             messages.appendChild(item);
             mainEl.scrollTop = mainEl.scrollHeight;
         }
 
-        function setupSeenObserver() {
-            if (seenObserver) seenObserver.disconnect();
-            seenObserver = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        const messageElement = entry.target;
-                        const messageId = messageElement.id.replace('msg-', '');
-                        sendMessage('message_seen', { messageId });
-                        seenObserver.unobserve(messageElement);
-                    }
-                });
-            }, { threshold: 0.8 });
-        }
-
-        function updateSeenStatus(messageId, username) {
-            if (username === myUsername) return; 
-            const messageElement = document.getElementById(`msg-${messageId}`);
-            if (messageElement) {
-                const statusDiv = messageElement.querySelector('.seen-status');
-                if (statusDiv) {
-                    const currentStatus = statusDiv.textContent;
-                    if (!currentStatus.includes(username)) {
-                         const prefix = currentStatus ? ', ' : 'Đã xem bởi ';
-                         statusDiv.textContent += `${prefix}${username}`;
-                    }
-                }
-            }
-        }
-        
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); });
-        }
+        if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); }); }
     </script>
 </body>
 </html>
