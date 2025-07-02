@@ -1,5 +1,5 @@
-// Cập nhật phiên bản lên v13 để sửa lỗi lưu lịch sử chat
-const CACHE_NAME = 'quick-chat-v13';
+// Cập nhật phiên bản lên v14 để sửa lỗi và khôi phục tất cả tính năng
+const CACHE_NAME = 'quick-chat-v14';
 
 const urlsToCache = [
   '/',

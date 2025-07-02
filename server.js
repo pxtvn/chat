@@ -63,6 +63,17 @@ wss.on('connection', ws => {
                         broadcastToRoom(ws.currentRoom, messageData);
                     }
                     break;
+                case 'clear_room_history':
+                    if (ws.currentRoom && rooms[ws.currentRoom]) {
+                        rooms[ws.currentRoom].history = [];
+                        broadcastToRoom(ws.currentRoom, {type: 'clear_confirmed'});
+                    }
+                    break;
+                case 'message_seen':
+                    if (ws.currentRoom && data.messageId) {
+                        broadcastToRoom(ws.currentRoom, { type: 'seen_by_user', messageId: data.messageId, username: ws.username });
+                    }
+                    break;
             }
         } catch (error) { console.error("Lỗi xử lý tin nhắn:", error); }
     });
@@ -74,26 +85,22 @@ function leaveCurrentRoom(ws) {
     if (roomName && rooms[roomName]) {
         const room = rooms[roomName];
         room.clients.delete(ws);
+        ws.currentRoom = null;
         broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã rời phòng.` });
         if (room.clients.size === 0 && !room.isDM) {
             room.deleteTimeout = setTimeout(() => { if (rooms[roomName] && rooms[roomName].clients.size === 0) { delete rooms[roomName]; broadcastStateUpdate(); }}, 180000);
         }
+        broadcastStateUpdate();
     }
-    ws.currentRoom = null;
 }
 
 function joinRoom(ws, roomName) {
     leaveCurrentRoom(ws);
     const room = rooms[roomName];
     if (room.deleteTimeout) { clearTimeout(room.deleteTimeout); room.deleteTimeout = null; }
-    
     room.clients.add(ws);
     ws.currentRoom = roomName;
-
-    // SỬA LỖI: Gửi lịch sử phòng ĐẦU TIÊN, ngay sau khi người dùng vào.
-    ws.send(JSON.stringify({ type: 'room_history', roomName: roomName, history: room.history }));
-
-    // Sau đó mới gửi các thông báo khác
+    ws.send(JSON.stringify({ type: 'room_history', history: room.history }));
     broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã vào phòng.` });
     ws.send(JSON.stringify({ type: 'join_success', roomName: roomName, isDM: room.isDM }));
     broadcastStateUpdate();
