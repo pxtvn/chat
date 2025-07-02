@@ -1,5 +1,5 @@
-// Cập nhật phiên bản lên v10 cho tính năng DM và input lớn hơn
-const CACHE_NAME = 'quick-chat-v10';
+// Cập nhật phiên bản lên v11
+const CACHE_NAME = 'quick-chat-v11';
 
 const urlsToCache = [
   '/',

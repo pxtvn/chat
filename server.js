@@ -13,6 +13,7 @@ const usersByName = new Map();
 const USER_COLORS = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF'];
 
 app.use(express.static(path.join(__dirname, 'public')));
+
 app.get('/sw.js', (req, res) => {
   res.set({
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -21,6 +22,7 @@ app.get('/sw.js', (req, res) => {
   });
   res.sendFile(path.join(__dirname, 'sw.js'));
 });
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -93,7 +95,7 @@ wss.on('connection', ws => {
                         ws.send(JSON.stringify({ type: 'error', message: 'Người dùng không online.' }));
                         return;
                     }
-                    const dmRoomName = [ws.username, data.targetUsername].sort().join('-');
+                    const dmRoomName = [ws.username, data.targetUsername].sort().join('-dm-');
                     if (!rooms[dmRoomName]) {
                         rooms[dmRoomName] = { clients: new Set(), password: null, isDM: true, deleteTimeout: null };
                     }
@@ -134,10 +136,11 @@ wss.on('connection', ws => {
 
     ws.on('close', () => {
         if (ws.username) {
-            console.log(`${ws.username} disconnected.`);
+            const userThatLeft = ws.username;
             leaveCurrentRoom(ws);
-            usersByName.delete(ws.username);
+            usersByName.delete(userThatLeft);
             broadcastStateUpdate();
+            console.log(`${userThatLeft} disconnected.`);
         }
     });
 });
@@ -147,10 +150,8 @@ function leaveCurrentRoom(ws) {
     if (roomName && rooms[roomName]) {
         const room = rooms[roomName];
         room.clients.delete(ws);
-        ws.currentRoom = null;
         broadcastToRoom(roomName, { type: 'system', content: `${ws.username} đã rời phòng.` });
         if (room.clients.size === 0 && !room.isDM) {
-            console.log(`Room "${roomName}" is empty. Scheduling deletion in 3 minutes.`);
             room.deleteTimeout = setTimeout(() => {
                 if (rooms[roomName] && rooms[roomName].clients.size === 0) {
                     delete rooms[roomName];
@@ -159,8 +160,8 @@ function leaveCurrentRoom(ws) {
                 }
             }, 180000);
         }
-        broadcastStateUpdate();
     }
+    ws.currentRoom = null;
 }
 
 function joinRoom(ws, roomName) {
@@ -169,7 +170,6 @@ function joinRoom(ws, roomName) {
     if (room.deleteTimeout) {
         clearTimeout(room.deleteTimeout);
         room.deleteTimeout = null;
-        console.log(`Deletion for room "${roomName}" cancelled.`);
     }
     room.clients.add(ws);
     ws.currentRoom = roomName;
