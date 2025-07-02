@@ -43,8 +43,20 @@
         #messages > li { background-color: var(--surface-color); padding: 0.75rem 1rem; margin-bottom: 0.5rem; border-radius: 0.8rem; word-wrap: break-word; border: 1px solid var(--border-color); }
         .system-message { color: var(--secondary-text-color); font-style: italic; background: none !important; text-align: center; border: none !important; }
         .message-sender { font-weight: bold; margin-right: 8px; }
-        .message-container { display: flex; flex-direction: column; align-items: flex-start; }
-        .seen-status { font-size: 0.75rem; color: var(--secondary-text-color); margin-top: 4px; margin-left: 10px; height: 14px; opacity: 0.7; }
+
+        .message-container { 
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .seen-status {
+            font-size: 0.75rem;
+            color: var(--secondary-text-color);
+            margin-top: 4px;
+            margin-left: 10px;
+            height: 14px;
+            opacity: 0.7;
+        }
 
         #form-container { background-color: var(--surface-color); padding: 0.5rem; border-top: 1px solid var(--border-color); position: relative; }
         #form { 
@@ -99,6 +111,10 @@
         #dm-list li:hover, #room-list li:hover, #global-user-list li:hover { background: #444; }
         #create-room-btn { display: block; width: calc(100% - 2rem); margin: 1rem auto 0; padding: 0.75rem; font-size: 1rem; background: var(--accent-color); color: white; border: none; border-radius: 8px; cursor: pointer; }
 
+        @media (max-width: 768px) {
+            #sidebar { display: none; }
+        }
+
         #welcome-overlay, #create-room-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
         #create-room-overlay { display: none; }
         .modal { background-color: var(--surface-color); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-color); position: relative; }
@@ -106,10 +122,6 @@
         .modal input { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background-color: #333; color: var(--primary-text-color); margin-bottom: 1rem; }
         .modal button { width: 50%; padding: 0.75rem; border-radius: 8px; border: none; background-color: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; }
         .modal .close-btn { position: absolute; top: 10px; right: 15px; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
-
-        @media (max-width: 768px) {
-            #sidebar { display: none; }
-        }
     </style>
 </head>
 <body>
@@ -163,7 +175,7 @@
             </div>
         </aside>
     </div>
-
+    
     <audio id="notification-sound" src="/sounds/notification.mp3" preload="auto"></audio>
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
@@ -199,10 +211,26 @@
         closeCreateRoomBtn.addEventListener('click', () => { createRoomOverlay.style.display = 'none'; });
         createRoomForm.addEventListener('submit', (e) => { e.preventDefault(); const roomName = document.getElementById('room-name-input').value.trim(); const password = document.getElementById('room-password-input').value; if (roomName) { sendMessage('create_room', { roomName, password }); createRoomOverlay.style.display = 'none'; createRoomForm.reset(); }});
         
-        input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }});
-        input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = (input.scrollHeight) + 'px'; });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                form.requestSubmit();
+            }
+        });
+        
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = (input.scrollHeight) + 'px';
+        });
 
-        form.addEventListener('submit', (e) => { e.preventDefault(); if (input.value.trim()) { sendMessage('text', { content: input.value.trim() }); input.value = ''; input.style.height = 'auto'; }});
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (input.value.trim()) {
+                sendMessage('text', { content: input.value.trim() });
+                input.value = '';
+                input.style.height = 'auto';
+            }
+        });
         
         clearRoomBtn.addEventListener('click', () => { if (confirm('Bạn có chắc muốn xóa lịch sử của phòng chat này không?')) { sendMessage('clear_room_history'); }});
         emojiBtn.addEventListener('click', (e) => { e.stopPropagation(); emojiPicker.classList.toggle('visible'); });
@@ -239,35 +267,109 @@
                         updateGlobalUserList(data.users);
                         break;
                     case 'join_success':
-                        messages.innerHTML = '';
                         form.style.display = 'flex';
                         document.title = `${data.roomName.replace('-dm-', ' & ')} - Quick Chat`;
-                        appendMessage({ type: 'system', content: `Bạn đã vào phòng "${data.roomName.replace('-dm-', ' & ')}".` });
+                        if (!data.isDM) {
+                           appendMessage({ type: 'system', content: `Bạn đã vào phòng "${data.roomName}".` });
+                        }
                         break;
                     case 'room_history':
                         messages.innerHTML = '';
-                        if (data.history && data.history.length > 0) { data.history.forEach(msg => appendMessage(msg)); }
+                        if (data.history && data.history.length > 0) {
+                            data.history.forEach(msg => appendMessage(msg));
+                        }
                         setupSeenObserver();
                         break;
                     case 'dm_invite':
                         addDmToList(data.roomName, data.fromUser);
                         appendMessage({ type: 'system', content: `Bạn có tin nhắn mới từ ${data.fromUser}. Nhấp vào cuộc trò chuyện ở sidebar để xem.` });
                         break;
-                    case 'text': case 'system': appendMessage(data); break;
-                    case 'seen_by_user': updateSeenStatus(data.messageId, data.username); break;
-                    case 'clear_confirmed': messages.innerHTML = ''; appendMessage({type: 'system', content: 'Lịch sử phòng đã được xóa.'}); break;
-                    case 'error': alert(`Lỗi: ${data.message}`); break;
+                    case 'text':
+                    case 'system':
+                        appendMessage(data);
+                        break;
+                    case 'seen_by_user':
+                        updateSeenStatus(data.messageId, data.username);
+                        break;
+                    case 'clear_confirmed':
+                        messages.innerHTML = '';
+                        appendMessage({type: 'system', content: 'Lịch sử phòng đã được xóa.'});
+                        break;
+                    case 'error':
+                        alert(`Lỗi: ${data.message}`);
+                        break;
                 }
             };
         }
 
         function sendMessage(type, payload = {}) { if (type === 'text') { const tempId = `temp_${Date.now()}`; payload.tempId = tempId; sentMessages.add(tempId); } if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({ type, ...payload })); } }
+        
         function updateRoomList(rooms) { roomList.innerHTML = ''; if (!rooms || rooms.length === 0) { roomList.innerHTML = '<li style="cursor:default;justify-content:center;">Chưa có phòng nào.</li>'; return; } rooms.forEach(room => { const item = document.createElement('li'); item.dataset.roomName = room.name; item.dataset.isProtected = room.isProtected; item.innerHTML = `<div><span>${room.name}</span><span class="user-count"> (${room.userCount})</span></div>${room.isProtected ? '<span>🔒</span>' : ''}`; roomList.appendChild(item); }); }
-        function updateGlobalUserList(users) { globalUserList.innerHTML = ''; if (!users || users.length === 0) { globalUserList.innerHTML = '<li>Không có ai online.</li>'; return; } users.forEach(user => { const item = document.createElement('li'); item.dataset.username = user.username; if (user.username === myUsername) { item.style.cursor = 'default'; item.innerHTML = `<div style="color: ${user.color}; font-weight: bold;">${user.username} (Bạn)</div><div class="user-count">${user.currentRoom.replace('-dm-',' & ')}</div>`; } else { item.innerHTML = `<div style="color: ${user.color};">${user.username}</div><div class="user-count">${user.currentRoom.replace('-dm-',' & ')}</div>`; } globalUserList.appendChild(item); }); }
-        function addDmToList(roomName, withUser) { if (document.querySelector(`#dm-list li[data-room-name="${roomName}"]`)) return; const item = document.createElement('li'); item.dataset.roomName = roomName; item.innerHTML = `<span>💬 ${withUser}</span>`; const placeholder = dmList.querySelector('.no-dm-placeholder'); if (placeholder) placeholder.remove(); else if (dmList.innerHTML === '<li>Chưa có tin nhắn nào.</li>') { dmList.innerHTML = ''; } dmList.appendChild(item); }
-        function appendMessage(message) { const mainEl = document.querySelector('main'); const item = document.createElement('li'); if (message.type === 'system') { item.classList.add('system-message'); item.textContent = message.content; } else { item.id = `msg-${message.id}`; item.innerHTML = `<div class="message-container"><div><span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}</div><div class="seen-status"></div></div>`; if (message.username !== myUsername && seenObserver) { seenObserver.observe(item); } } messages.appendChild(item); mainEl.scrollTop = mainEl.scrollHeight; }
-        function setupSeenObserver() { if (seenObserver) seenObserver.disconnect(); seenObserver = new IntersectionObserver((entries) => { entries.forEach(entry => { if (entry.isIntersecting) { const messageElement = entry.target; const messageId = messageElement.id.replace('msg-', ''); sendMessage('message_seen', { messageId }); seenObserver.unobserve(messageElement); } }); }, { threshold: 0.8 }); }
-        function updateSeenStatus(messageId, username) { if (username === myUsername) return; const messageElement = document.getElementById(`msg-${messageId}`); if (messageElement) { const statusDiv = messageElement.querySelector('.seen-status'); if (statusDiv) { const currentStatus = statusDiv.textContent; if (!currentStatus.includes(username)) { const prefix = currentStatus ? ', ' : 'Đã xem bởi '; statusDiv.textContent += `${prefix}${username}`; } } } }
+        
+        function updateGlobalUserList(users) {
+            globalUserList.innerHTML = '';
+            if (!users || users.length === 0) { globalUserList.innerHTML = '<li>Không có ai online.</li>'; return; }
+            users.forEach(user => { const item = document.createElement('li'); item.dataset.username = user.username; if (user.username === myUsername) { item.style.cursor = 'default'; item.innerHTML = `<div style="color: ${user.color}; font-weight: bold;">${user.username} (Bạn)</div><div class="user-count">${user.currentRoom.replace('-dm-',' & ')}</div>`; } else { item.innerHTML = `<div style="color: ${user.color};">${user.username}</div><div class="user-count">${user.currentRoom.replace('-dm-',' & ')}</div>`; } globalUserList.appendChild(item); });
+        }
+        
+        function addDmToList(roomName, withUser) {
+            const existingItem = document.querySelector(`#dm-list li[data-room-name="${roomName}"]`);
+            if (existingItem) {
+                existingItem.classList.add('new-message-pulse');
+                setTimeout(() => existingItem.classList.remove('new-message-pulse'), 1000);
+                return;
+            };
+            const item = document.createElement('li'); item.dataset.roomName = roomName; item.innerHTML = `<span>💬 ${withUser}</span>`;
+            const placeholder = dmList.querySelector('.no-dm-placeholder');
+            if (placeholder) placeholder.remove(); else if (dmList.innerHTML === '<li>Chưa có tin nhắn nào.</li>') { dmList.innerHTML = ''; }
+            dmList.appendChild(item);
+        }
+
+        function appendMessage(message) {
+            const mainEl = document.querySelector('main');
+            const item = document.createElement('li');
+            if (message.type === 'system') {
+                item.classList.add('system-message'); item.textContent = message.content;
+            } else {
+                item.id = `msg-${message.id}`;
+                item.innerHTML = `<div class="message-container"><div><span class="message-sender" style="color: ${message.color};">${message.username}:</span> ${message.content}</div><div class="seen-status"></div></div>`;
+                if (message.username !== myUsername && seenObserver) {
+                    seenObserver.observe(item);
+                }
+            }
+            messages.appendChild(item);
+            mainEl.scrollTop = mainEl.scrollHeight;
+        }
+
+        function setupSeenObserver() {
+            if (seenObserver) seenObserver.disconnect();
+            seenObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const messageElement = entry.target;
+                        const messageId = messageElement.id.replace('msg-', '');
+                        sendMessage('message_seen', { messageId });
+                        seenObserver.unobserve(messageElement);
+                    }
+                });
+            }, { threshold: 0.8 });
+        }
+
+        function updateSeenStatus(messageId, username) {
+            if (username === myUsername) return; 
+            const messageElement = document.getElementById(`msg-${messageId}`);
+            if (messageElement) {
+                const statusDiv = messageElement.querySelector('.seen-status');
+                if (statusDiv) {
+                    const currentStatus = statusDiv.textContent;
+                    if (!currentStatus.includes(username)) {
+                         const prefix = currentStatus ? ', ' : 'Đã xem bởi: ';
+                         statusDiv.textContent += `${prefix}${username}`;
+                    }
+                }
+            }
+        }
+        
         document.addEventListener('visibilitychange', () => { if (!document.hidden) { unreadMessages = 0; document.title = originalTitle; if ('clearAppBadge' in navigator) navigator.clearAppBadge(); }});
         
         let newWorker;

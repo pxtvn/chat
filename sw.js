@@ -1,5 +1,5 @@
-// Cập nhật phiên bản lên v15 để có cơ chế update chủ động
-const CACHE_NAME = 'quick-chat-v15';
+// Cập nhật phiên bản lên v16 để sửa lỗi logic history
+const CACHE_NAME = 'quick-chat-v16';
 
 const urlsToCache = [
   '/',
@@ -10,16 +10,11 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
-  console.log('Service Worker: Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Service Worker: Caching app shell');
         return cache.addAll(urlsToCache);
-      })
-      .then(() => {
-        // THÊM MỚI: Buộc service worker mới phải kích hoạt ngay sau khi cài đặt xong
-        return self.skipWaiting();
       })
   );
 });
@@ -36,11 +31,9 @@ self.addEventListener('activate', event => {
           }
         })
       );
-    }).then(() => {
-      // THÊM MỚI: Yêu cầu quyền kiểm soát tất cả các tab đang mở ngay lập tức
-      return self.clients.claim();
     })
   );
+  return self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
